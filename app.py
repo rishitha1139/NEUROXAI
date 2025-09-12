@@ -50,9 +50,16 @@ def load_models():
     
     try:
         # Load preprocessor
-        if os.path.exists(os.path.join(MODELS_DIR, 'preprocessor.pkl')):
-            preprocessor = joblib.load(os.path.join(MODELS_DIR, 'preprocessor.pkl'))
-            logger.info("Preprocessor loaded successfully")
+        preprocessor_path = os.path.join(MODELS_DIR, 'preprocessor.pkl')
+        if os.path.exists(preprocessor_path):
+            preprocessor = joblib.load(preprocessor_path)
+            logger.info("Preprocessor loaded successfully from %s", preprocessor_path)
+        else:
+            logger.warning("No preprocessor found at %s. Creating new preprocessor...", preprocessor_path)
+            preprocessor = DataPreprocessor()
+            # Save the new preprocessor
+            joblib.dump(preprocessor, preprocessor_path)
+            logger.info("New preprocessor created and saved to %s", preprocessor_path)
         
         # Load feature selector
         if os.path.exists(os.path.join(MODELS_DIR, 'feature_selector.pkl')):
@@ -60,15 +67,15 @@ def load_models():
             logger.info("Feature selector loaded successfully")
         
         # Load ML models
-        ml_models = ['random_forest', 'logistic_regression', 'svm', 'gradient_boosting']
+        ml_models = ['random_forest', 'xgboost', 'svm', 'logistic']
         for model_name in ml_models:
-            model_path = os.path.join(MODELS_DIR, f'{model_name}_model.pkl')
+            model_path = os.path.join(MODELS_DIR, f'{model_name}_model.joblib')
             if os.path.exists(model_path):
                 models[model_name] = joblib.load(model_path)
                 logger.info(f"Model {model_name} loaded successfully")
         
         # Load DNN model if available
-        dnn_path = os.path.join(MODELS_DIR, 'dnn_model.h5')
+        dnn_path = os.path.join(MODELS_DIR, 'dnn_model.keras')
         if os.path.exists(dnn_path):
             try:
                 from tensorflow import keras
@@ -119,14 +126,20 @@ def predict():
         if model_name not in models:
             return jsonify({'error': f'Model {model_name} not available'}), 400
         
+        # Convert checkbox values to integers
+        for key in features:
+            if isinstance(features[key], bool):
+                features[key] = 1 if features[key] else 0
+            else:
+                features[key] = float(features[key])
+
         # Convert features to DataFrame
         feature_df = pd.DataFrame([features])
         
-        # Preprocess features if preprocessor is available
+        # Scale features if preprocessor is available
         if preprocessor:
-            # Apply the same preprocessing steps
-            feature_df = preprocessor.scale_features(feature_df, target_column=None)[0]
-        
+            feature_df, _, _ = preprocessor.scale_features(feature_df)
+            
         # Make prediction
         model = models[model_name]
         
@@ -228,8 +241,8 @@ def upload_file():
         data = pd.read_csv(filepath)
         
         # Basic validation
-        if 'status' not in data.columns:
-            return jsonify({'error': 'CSV must contain a "status" column'}), 400
+        if 'Diagnosis' not in data.columns:
+            return jsonify({'error': 'CSV must contain a "Diagnosis" column'}), 400
         
         # Return data summary
         summary = {
@@ -264,8 +277,8 @@ def batch_predict():
             return jsonify({'error': 'File not found'}), 400
         
         data = pd.read_csv(filepath)
-        X = data.drop(columns=['status'])
-        y_true = data['status']
+        X = data.drop(columns=['PatientID', 'DoctorInCharge', 'Diagnosis'])
+        y_true = data['Diagnosis']
         
         # Preprocess features if preprocessor is available
         if preprocessor:

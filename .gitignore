@@ -16,3 +16,6 @@ data/
 
 # Environment files
 .env
+
+# IDE files
+.vscode/
