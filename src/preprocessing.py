@@ -191,6 +191,52 @@ class DataPreprocessor:
         logger.info("Preprocessing pipeline completed successfully")
         return X_train, X_test, y_train, y_test, scaler, self.feature_names
 
+
+        logger.info(f"Data split: Train shape {X_train.shape}, Test shape {X_test.shape}")
+        return X_train, X_test, y_train, y_test
+    
+    def transform_for_prediction(self, data):
+        """
+        Prepares new, raw data for prediction using the fitted components.
+
+        Args:
+            data (pd.DataFrame): The new data to transform.
+
+        Returns:
+            pd.DataFrame: The transformed data, ready for prediction.
+        """
+        if not self.scaler or not self.feature_names:
+            raise RuntimeError(
+                "Preprocessor has not been fitted. "
+                "Please run the training pipeline first to fit the preprocessor."
+            )
+
+        # Handle missing values using the fitted imputer
+        numeric_cols = data.select_dtypes(include=[np.number]).columns
+        if self.imputer and len(numeric_cols) > 0:
+            data[numeric_cols] = self.imputer.transform(data[numeric_cols])
+        
+        # Identify numeric features that were present during training
+        numeric_features_to_scale = [
+            col for col in self.feature_names 
+            if col in data.columns and np.issubdtype(data[col].dtype, np.number)
+        ]
+        
+        if numeric_features_to_scale:
+            # Scale numeric features using the fitted scaler
+            data_scaled_array = self.scaler.transform(data[numeric_features_to_scale])
+            data_scaled = pd.DataFrame(data_scaled_array, columns=numeric_features_to_scale, index=data.index)
+
+            # Update the original dataframe with scaled values
+            data[numeric_features_to_scale] = data_scaled
+
+        # Align columns to match the exact feature set from training
+        # This adds missing columns with 0 and removes extra ones.
+        data_aligned = data.reindex(columns=self.feature_names, fill_value=0)
+        
+        logger.info("Prediction data transformed successfully.")
+        return data_aligned
+
 def main():
     """Example usage of the DataPreprocessor class."""
     preprocessor = DataPreprocessor(scaler_type='standard')
