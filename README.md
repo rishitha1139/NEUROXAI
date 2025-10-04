@@ -5,154 +5,120 @@
 ![TensorFlow](https://img.shields.io/badge/deep--learning-tensorflow-orange.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-A comprehensive machine learning and deep learning framework for Parkinson's disease diagnosis with **state-of-the-art Explainable AI (XAI)** techniques.
+A machine learning + deep learning framework for Parkinson's disease prediction with Explainable AI (SHAP, LIME) and a Flask web UI that serves predictions and generated reports.
 
 ---
 
-## 📌 Project Overview
-
-Parkinson's disease is a progressive neurodegenerative disorder that primarily affects movement, leading to symptoms like tremors, stiffness, and difficulty with balance and coordination.  
-
-This project applies **Explainable AI** to make predictions transparent, interpretable, and clinically trustworthy.  
+## Key additions in this README
+- How to ensure model/preprocessor feature consistency
+- How to regenerate models and reports
+- How to view generated reports from the web app (/reports)
 
 ---
 
-## 🏗️ Project Structure
+## Quick Start (Windows)
+
+1. Create and activate venv
+```powershell
+python -m venv venv
+venv\Scripts\activate
+```
+
+2. Install dependencies
+```powershell
+pip install -r requirements.txt
+```
+
+3. Train models and save the fitted preprocessor
+```powershell
+python src/train_and_save_models.py
+```
+This fits and saves the preprocessor (scaler, imputer, feature names) and trained models in `models/`.
+
+4. Generate results / reports (plots, CSV, PDF) into `results/`
+```powershell
+python src/generate_results.py
+```
+
+5. Run the Flask app and view reports
+```powershell
+python app.py
+```
+Open http://127.0.0.1:5000/reports to list and preview generated report files.
+
+---
+
+## Project layout
 
 NeuroXAI/
-│── data/ # Dataset storage
-│ └── parkinsons_disease_data.csv
-│── notebooks/ # Jupyter notebooks for exploration
-│── src/ # Source code
-│ ├── preprocessing.py # Data cleaning and preprocessing
-│ ├── feature_selection.py # Feature importance and selection
-│ ├── model_training.py # ML/DL model training
-│ ├── explainability.py # SHAP, LIME, and XAI techniques
-│ └── utils.py # Visualization and utilities
-│── models/ # Trained models (created after training)
-│── results/ # Model results and reports
-│── app.py # Flask web application
-│── requirements.txt # Python dependencies
-│── README.md # This file
-
+- data/ — datasets (parkinsons_disease_data.csv)
+- src/ — preprocessing, training, explainability, utilities
+- models/ — saved models and preprocessor (.pkl, .h5)
+- results/ — generated plots and report files (images, pdf, csv)
+- templates/ — Flask HTML templates (add `reports.html` if not present)
+- app.py — Flask app (now includes /reports and /results/<filename> endpoints)
 
 ---
 
-## 🚀 Features
+## Reports in the Web App
 
-### 🔹 Core ML/DL Capabilities
-- Traditional ML: **Random Forest, SVM, Logistic Regression, Gradient Boosting, XGBoost**
-- Deep Learning: **TensorFlow/Keras-based DNN**
-- Feature Engineering: Feature importance + selection
-- Model Evaluation: Accuracy, Precision, Recall, F1, ROC
+- Ensure `src/generate_results.py` writes outputs to project/results/.
+- The Flask app should expose:
+  - GET /reports → HTML page listing files in `results/`
+  - GET /results/<filename> → Serve specific report file
 
-### 🔹 Explainable AI (XAI)
-- **SHAP**: Global + local interpretability
-- **LIME**: Local prediction explanations
-- **Feature Importance**: Multiple methods
-- **Confidence Scores**: Model prediction reliability
-
-### 🔹 Web Application
-- RESTful API for predictions
-- File upload for **batch predictions**
-- Real-time SHAP & LIME explanations
-- Model training & evaluation via API
+If images or PDFs do not appear, check:
+- `results/` exists and contains files
+- File permissions and Flask logs for 404 errors
+- URL paths in browser (use the exact filename)
 
 ---
 
-## 🎥 Demo
+## Preprocessor & Feature Consistency (Important)
 
-👉 Run the app:
+- Always retrain and resave the preprocessor when feature set changes:
+  1. Run training script: `python src/train_and_save_models.py`
+  2. This updates `models/preprocessor.pkl` (contains scaler, imputer, feature_names).
+  3. Any prediction or report generation must load this same preprocessor.
+- For runtime predictions, use a transform method that:
+  - applies the fitted imputer and scaler
+  - reindexes incoming data to the saved feature order (adds missing cols with default values)
 
-- python app.py
-- Then open http://localhost:5000/ in your browser.
+If you see: `The feature names should match those that were passed during fit.` — retrain and resave the preprocessor and models.
 
 ---
 
-##📋 Requirements
+## API Endpoints (summary)
 
-Python: 3.8 or higher
+- GET /api/health → Health check  
+- GET /api/models → List available models  
+- POST /api/predict → Single prediction  
+- POST /api/batch_predict → Batch predictions (CSV)  
+- POST /api/explain → Explain single prediction (SHAP/LIME)  
+- POST /api/explain_batch → Explain batch predictions  
+- POST /api/upload → Upload CSV  
+- POST /api/train → Trigger retrain (if implemented)  
+- GET /reports → List and preview files in `results/`  
+- GET /results/<filename> → Serve report file
 
-Install dependencies:
+---
 
-pip install -r requirements.txt
+## Troubleshooting
 
-# Clone repo
-git clone https://github.com/VarunSallagali/NeuroXAI.git
-cd NeuroXAI
+- Prediction errors about feature names → retrain and save preprocessor; ensure incoming CSV columns match or are aligned by the preprocessor transform.
+- Reports not visible → verify `results/` contains files and Flask serves that folder (absolute path recommended).
+- DNN shape errors → for DNN models, ensure input is reshaped as during training (e.g., (n_samples, n_features, 1)) before predict().
 
-# Create venv
-python -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
+---
 
-# Install deps
-pip install -r requirements.txt
+## Notes & Disclaimer
 
-# Run app
-python app.py
+This project is for research/educational use. Not for clinical diagnosis without validation.
 
-## 📊 Dataset Information
+---
 
-Samples: ~2100 patients
+## License & Author
 
-Features: Clinical, lifestyle, and neurological features
-
-Target: Binary classification (0 = No Parkinson, 1 = Parkinson)
-
-Includes: Age, BMI, Lifestyle habits, Clinical measures, Neurological assessments
-
-⚠️ Note: Our dataset is an extended version of the UCI Parkinson’s dataset, enriched with clinical and lifestyle features.
-
-## 🌐 Web Application API
-Endpoints
-
-GET /api/health → Check app status
-GET /api/models → List available models
-POST /api/predict → Single prediction
-POST /api/batch_predict → Batch predictions
-POST /api/explain → Explain single prediction
-POST /api/explain_batch → Explain batch predictions
-POST /api/upload → Upload CSV data
-POST /api/train → Train new models
-
-## 📈 Model Performance
-
-Accuracy: 95%+
-Precision: 94%+
-Recall: 96%+
-F1-Score: 95%+
-
-## 🔬 Research Applications
-
-Clinical decision support
-
-Patient-friendly diagnosis explanations
-
-Parkinson’s biomarker research
-
-Trustworthy AI in healthcare
-
-## 📚 References
-
-SHAP Documentation
-
-LIME Documentation
-
-Parkinson's Dataset - UCI
-
-Explainable AI in Healthcare
-
-## 📄 License
-
-This project is licensed under the MIT License – see the LICENSE
- file.
-
-
- ## 👨‍💻 Author
+MIT License — see LICENSE
 
 Developed by Varun Sallagali
-
-📌 Capstone Project | Placement Preparation | AI + XAI in Healthcare
-
-⚠️ Disclaimer: This is a research tool. It should not be used for clinical diagnosis without proper medical validation.
-
