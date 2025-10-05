@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NeuroXAI - Analysis Reports</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --primary-dark: #1e40af;
+            --secondary-color: #3b82f6;
+            --accent-color: #ef4444;
+            --success-color: #22c55e;
+            --warning-color: #f59e0b;
+            --bg-light: #f8fafc;
+            --text-dark: #1e293b;
+            --text-light: #64748b;
+            --border-light: #e2e8f0;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            color: var(--text-dark);
+            background-color: var(--bg-light);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .navbar {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        .navbar-brand {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #ffffff, #e2e8f0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .navbar-nav .nav-link {
+            color: rgba(255, 255, 255, 0.9) !important;
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .navbar-nav .nav-link:hover,
+        .navbar-nav .nav-link.active {
+            color: white !important;
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-1px);
+        }
+
+        .page-header {
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(59, 130, 246, 0.1));
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+            border-radius: 0 0 20px 20px;
+        }
+
+        .page-title {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+        }
+
+        .page-description {
+            color: var(--text-light);
+            font-size: 1.1rem;
+        }
+
+        .report-card {
+            border: 1px solid var(--border-light);
+            border-radius: 16px;
+            overflow: hidden;
+            margin-bottom: 1.5rem;
+            background: white;
+            transition: all 0.3s ease;
+            height: 100%;
+        }
+
+        .report-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0,0,0,0.1);
+        }
+
+        .report-image-container {
+            position: relative;
+            overflow: hidden;
+            padding-top: 60%;
+        }
+
+        .report-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.3s ease;
+        }
+
+        .report-card:hover .report-image {
+            transform: scale(1.05);
+        }
+
+        .report-info {
+            padding: 1.5rem;
+        }
+
+        .report-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-dark);
+            margin-bottom: 1rem;
+        }
+
+        .report-description {
+            color: var(--text-light);
+            font-size: 0.95rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .btn-view {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.25rem;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.875rem;
+            transition: all 0.3s ease;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border: none;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 2px solid var(--secondary-color);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .section-title i {
+            font-size: 1.25rem;
+            opacity: 0.9;
+        }
+
+        .alert {
+            border-radius: 16px;
+            padding: 2rem;
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.05), rgba(59, 130, 246, 0.05));
+            border: 1px solid var(--border-light);
+        }
+
+        .alert-heading {
+            color: var(--primary-color);
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .alert ol {
+            color: var(--text-light);
+            font-size: 1rem;
+            line-height: 1.6;
+        }
+
+        footer {
+            margin-top: auto;
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.05), rgba(59, 130, 246, 0.05));
+            padding: 1.5rem 0;
+            border-top: 1px solid var(--border-light);
+        }
+
+        .footer-text {
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">NeuroXAI</a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/"><i class="fas fa-home"></i> Home</a>
+                <a class="nav-link active" href="/reports"><i class="fas fa-chart-line"></i> Reports</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="page-header">
+        <div class="container">
+            <h1 class="page-title">Analysis Reports & Visualizations</h1>
+            <p class="page-description">Comprehensive model performance analysis and feature importance insights</p>
+        </div>
+    </div>
+
+    <div class="container pb-5">
+        {% if files %}
+            <!-- Model Performance Section -->
+            <div class="mb-5">
+                <h3 class="section-title">
+                    <i class="fas fa-chart-bar"></i>
+                    Model Performance Analysis
+                </h3>
+                <div class="row g-4">
+                    {% for file in files if file.startswith(('confusion_', 'model_comparison', 'roc_curves')) %}
+                        <div class="col-md-6">
+                            <div class="report-card">
+                                <div class="report-image-container">
+                                    <img src="{{ url_for('results_file', filename=file) }}" 
+                                         class="report-image" alt="{{ file }}">
+                                </div>
+                                <div class="report-info">
+                                    <h5 class="report-title">{{ file.replace('_', ' ').replace('.png', '').title() }}</h5>
+                                    <p class="report-description">
+                                        {% if 'confusion' in file %}
+                                            Model prediction accuracy analysis showing true vs predicted values
+                                        {% elif 'comparison' in file %}
+                                            Performance comparison across different machine learning models
+                                        {% elif 'roc' in file %}
+                                            ROC curves showing model classification performance
+                                        {% endif %}
+                                    </p>
+                                    <a href="{{ url_for('results_file', filename=file) }}" 
+                                       class="btn btn-view btn-primary" target="_blank">
+                                       <i class="fas fa-expand-arrows-alt"></i>
+                                       View Full Size
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Feature Importance Section -->
+            <div class="mb-5">
+                <h3 class="section-title">
+                    <i class="fas fa-lightbulb"></i>
+                    Feature Importance Analysis
+                </h3>
+                <div class="row g-4">
+                    {% for file in files if file.endswith('_importance.png') %}
+                        <div class="col-md-6">
+                            <div class="report-card">
+                                <div class="report-image-container">
+                                    <img src="{{ url_for('results_file', filename=file) }}" 
+                                         class="report-image" alt="{{ file }}">
+                                </div>
+                                <div class="report-info">
+                                    <h5 class="report-title">{{ file.replace('_', ' ').replace('.png', '').title() }}</h5>
+                                    <p class="report-description">
+                                        Analysis of feature contributions to model predictions
+                                    </p>
+                                    <a href="{{ url_for('results_file', filename=file) }}" 
+                                       class="btn btn-view btn-primary" target="_blank">
+                                       <i class="fas fa-expand-arrows-alt"></i>
+                                       View Full Size
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- SHAP Analysis Section -->
+            <div class="mb-5">
+                <h3 class="section-title">
+                    <i class="fas fa-brain"></i>
+                    SHAP Analysis
+                </h3>
+                <div class="row g-4">
+                    {% for file in files if 'shap' in file.lower() %}
+                        <div class="col-md-6">
+                            <div class="report-card">
+                                <div class="report-image-container">
+                                    <img src="{{ url_for('results_file', filename=file) }}" 
+                                         class="report-image" alt="{{ file }}">
+                                </div>
+                                <div class="report-info">
+                                    <h5 class="report-title">{{ file.replace('_', ' ').replace('.png', '').title() }}</h5>
+                                    <p class="report-description">
+                                        Detailed SHAP values showing feature impact on model decisions
+                                    </p>
+                                    <a href="{{ url_for('results_file', filename=file) }}" 
+                                       class="btn btn-view btn-primary" target="_blank">
+                                       <i class="fas fa-expand-arrows-alt"></i>
+                                       View Full Size
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Other Reports Section -->
+            {% set other_files = [] %}
+            {% for file in files if not (file.endswith('.png') or file in ['confusion_matrices.png', 'model_comparison.png', 'roc_curves.png']) %}
+                {% set _ = other_files.append(file) %}
+            {% endfor %}
+            
+            {% if other_files %}
+                <div class="mb-5">
+                    <h3 class="section-title">
+                        <i class="fas fa-file-alt"></i>
+                        Additional Reports
+                    </h3>
+                    <div class="row g-4">
+                        {% for file in other_files %}
+                            <div class="col-md-6">
+                                <div class="report-card">
+                                    <div class="report-info">
+                                        <h5 class="report-title">{{ file.replace('_', ' ').replace('.csv', '').title() }}</h5>
+                                        <p class="report-description">
+                                            {% if file.endswith('.csv') %}
+                                                Detailed numerical results in CSV format for further analysis
+                                            {% else %}
+                                                Additional analysis report with comprehensive insights
+                                            {% endif %}
+                                        </p>
+                                        <a href="{{ url_for('results_file', filename=file) }}" 
+                                           class="btn btn-view btn-primary" target="_blank">
+                                           <i class="fas fa-download"></i>
+                                           Download Report
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endif %}
+
+        {% else %}
+            <div class="alert">
+                <h4 class="alert-heading"><i class="fas fa-info-circle"></i> No Reports Available</h4>
+                <p>No analysis reports have been generated yet. Follow these steps to generate reports:</p>
+                <ol>
+                    <li>Navigate to the home page</li>
+                    <li>Enter patient data manually or upload a CSV file</li>
+                    <li>Use any of our available models to make predictions</li>
+                    <li>Reports will be automatically generated and displayed here</li>
+                </ol>
+                <a href="/" class="btn btn-primary mt-3">
+                    <i class="fas fa-arrow-left"></i>
+                    Go to Home Page
+                </a>
+            </div>
+        {% endif %}
+    </div>
+
+    <footer>
+        <div class="container text-center">
+            <p class="footer-text mb-0">
+                <i class="fas fa-brain"></i>
+                NeuroXAI - Advanced Parkinson's Disease Prediction with Explainable AI
+            </p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

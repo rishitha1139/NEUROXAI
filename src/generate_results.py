@@ -157,6 +157,15 @@ def generate_shap_plots(models, X):
     plt.savefig('results/shap_summary.png')
     plt.close()
 
+def save_plot(plt, filename, results_dir='results'):
+    """Safely save a plot to the results directory."""
+    try:
+        os.makedirs(results_dir, exist_ok=True)
+        filepath = os.path.join(results_dir, filename)
+        plt.savefig(filepath)
+        logger.info(f"Saved plot to {filepath}")
+    except Exception as e:
+        logger.error(f"Failed to save plot {filename}: {e}")
 def main():
     # Create results directory if it doesn't exist
     os.makedirs('results', exist_ok=True)

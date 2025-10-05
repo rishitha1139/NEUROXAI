@@ -3,9 +3,11 @@
 ![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![Flask](https://img.shields.io/badge/web-flask-green.svg)
 ![TensorFlow](https://img.shields.io/badge/deep--learning-tensorflow-orange.svg)
+![Bootstrap](https://img.shields.io/badge/UI-Bootstrap%205.1.3-purple.svg)
+![XAI](https://img.shields.io/badge/XAI-SHAP%2FLIME-brightgreen.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-A machine learning + deep learning framework for Parkinson's disease prediction with Explainable AI (SHAP, LIME) and a Flask web UI that serves predictions and generated reports.
+A modern web application for Parkinson's disease prediction using machine learning and deep learning models, enhanced with Explainable AI (SHAP, LIME). Features an intuitive Bootstrap UI, comprehensive visualizations, and detailed model explanations through an interactive web interface.
 
 ---
 
@@ -48,15 +50,35 @@ Open http://127.0.0.1:5000/reports to list and preview generated report files.
 
 ---
 
-## Project layout
+## Project Structure
 
 NeuroXAI/
 - data/ — datasets (parkinsons_disease_data.csv)
 - src/ — preprocessing, training, explainability, utilities
+  - explainability.py — SHAP and LIME implementations
+  - feature_selection.py — Feature importance analysis
+  - model_training.py — Model training pipelines
+  - preprocessing.py — Data preprocessing and transformation
+  - generate_results.py — Report generation utilities
+  - utils.py — Helper functions and utilities
 - models/ — saved models and preprocessor (.pkl, .h5)
-- results/ — generated plots and report files (images, pdf, csv)
-- templates/ — Flask HTML templates (add `reports.html` if not present)
-- app.py — Flask app (now includes /reports and /results/<filename> endpoints)
+  - preprocessor.pkl — Fitted preprocessor with feature names
+  - dnn_model.keras — Deep Neural Network model
+  - random_forest_model.joblib — Random Forest model
+  - xgboost_model.joblib — XGBoost model
+  - svm_model.joblib — SVM model
+  - logistic_model.joblib — Logistic Regression model
+- results/ — generated plots and report files
+  - confusion_matrices.png — Model accuracy visualization
+  - model_comparison.png — Performance comparison plots
+  - roc_curves.png — ROC curves for all models
+  - shap_importance.png — SHAP feature importance plots
+  - xgb_feature_importance.png — XGBoost feature importance
+  - rf_feature_importance.png — Random Forest feature importance
+- templates/ — Flask HTML templates with modern UI
+  - index.html — Main prediction interface
+  - reports.html — Analysis reports dashboard
+- app.py — Flask application with REST endpoints
 
 ---
 
@@ -105,20 +127,35 @@ If you see: `The feature names should match those that were passed during fit.` 
 
 ## Troubleshooting
 
-- Prediction errors about feature names → retrain and save preprocessor; ensure incoming CSV columns match or are aligned by the preprocessor transform.
-- Reports not visible → verify `results/` contains files and Flask serves that folder (absolute path recommended).
-- DNN shape errors → for DNN models, ensure input is reshaped as during training (e.g., (n_samples, n_features, 1)) before predict().
+### Model Issues
+- Feature name errors → Retrain and save preprocessor; ensure CSV columns match training data
+- DNN shape errors → Check input reshaping matches training shape (e.g., (n_samples, n_features, 1))
+- Prediction inconsistency → Verify preprocessor.pkl is latest version
 
----
+### Web Interface
+- Reports not loading → Check `results/` folder permissions and Flask file serving
+- Visualizations broken → Ensure all plot files exist in `results/` directory
+- UI elements misaligned → Clear browser cache or check console for Bootstrap/JS errors
+
+### Development
+- Training errors → Verify dataset format and feature engineering steps
+- Report generation fails → Check write permissions and file paths
+- API errors → Monitor Flask logs and verify endpoint parameters
 
 ## Notes & Disclaimer
 
-This project is for research/educational use. Not for clinical diagnosis without validation.
+This project is intended for research and educational purposes only. The predictions and analyses should not be used for clinical diagnosis without proper medical validation and supervision.
 
----
+Features:
+- Modern web interface with Bootstrap 5.1.3
+- Comprehensive ML/DL model suite
+- Extensive visualization capabilities
+- Detailed XAI implementations
+- RESTful API architecture
 
 ## License & Author
 
-MIT License — see LICENSE
+MIT License — see LICENSE file for details.
 
-Developed by Varun Sallagali
+Developed with ❤️ by Varun Sallagali
+© 2025 NeuroXAI Project

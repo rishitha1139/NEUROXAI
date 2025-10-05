@@ -93,13 +93,14 @@ class DataPreprocessor:
             
         return data
     
-    def scale_features(self, data, target_column='status'):
+    def scale_features(self, data, target_column='status', fit=True):
         """
         Scale numerical features.
         
         Args:
             data (pd.DataFrame): Input dataset
             target_column (str): Name of the target variable
+            fit (bool): Whether to fit the scaler or use the existing one
             
         Returns:
             tuple: (X_scaled, y, scaler)
@@ -116,15 +117,21 @@ class DataPreprocessor:
         numeric_features = X.select_dtypes(include=[np.number]).columns
         X_numeric = X[numeric_features]
         
-        # Initialize and fit scaler
-        if self.scaler_type == 'standard':
-            self.scaler = StandardScaler()
-        elif self.scaler_type == 'minmax':
-            self.scaler = MinMaxScaler()
+        # Initialize scaler if needed
+        if fit or self.scaler is None:
+            if self.scaler_type == 'standard':
+                self.scaler = StandardScaler()
+            elif self.scaler_type == 'minmax':
+                self.scaler = MinMaxScaler()
+            else:
+                raise ValueError("scaler_type must be 'standard' or 'minmax'")
+            
+            X_scaled = self.scaler.fit_transform(X_numeric)
+            logger.info(f"Fitted and transformed features using {self.scaler_type} scaler")
         else:
-            raise ValueError("scaler_type must be 'standard' or 'minmax'")
+            X_scaled = self.scaler.transform(X_numeric)
+            logger.info(f"Transformed features using existing {self.scaler_type} scaler")
         
-        X_scaled = self.scaler.fit_transform(X_numeric)
         X_scaled = pd.DataFrame(X_scaled, columns=numeric_features, index=X.index)
         
         # Add back non-numeric features if any
@@ -132,7 +139,9 @@ class DataPreprocessor:
         if len(non_numeric_features) > 0:
             X_scaled = pd.concat([X_scaled, X[non_numeric_features]], axis=1)
         
-        logger.info(f"Features scaled using {self.scaler_type} scaler")
+        # Store feature names
+        self.feature_names = X_scaled.columns.tolist()
+        
         return X_scaled, y, self.scaler
     
     def split_data(self, X, y, test_size=0.2, random_state=42):
