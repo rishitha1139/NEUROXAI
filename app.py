@@ -118,30 +118,62 @@ def ensure_preprocessor_fitted():
     try:
         preprocessor_path = os.path.join(MODELS_DIR, 'preprocessor.pkl')
         data_file = os.path.join(DATA_DIR, 'parkinsons_disease_data.csv')
-
+        # If preprocessor is already loaded and looks healthy, return True
         if preprocessor and getattr(preprocessor, 'scaler', None) is not None and getattr(preprocessor, 'feature_names', None):
             return True
 
+        # Try to load from disk and validate its contents
         if os.path.exists(preprocessor_path):
-            preprocessor = joblib.load(preprocessor_path)  
-            logger.info("Preprocessor reloaded from disk")
-            return True
+            p = joblib.load(preprocessor_path)
+            # Validate loaded preprocessor
+            if getattr(p, 'scaler', None) is not None and getattr(p, 'feature_names', None):
+                preprocessor = p
+                logger.info("Preprocessor reloaded from disk and is ready")
+                return True
+            else:
+                logger.warning("Preprocessor found on disk but missing attributes (feature_names/scaler). Attempting to repair using training data...")
+                # attempt to repair by refitting from training CSV if available
+                if os.path.exists(data_file):
+                    try:
+                        p = DataPreprocessor()
+                        # run preprocessing pipeline to fit scaler and feature names
+                        X_train, X_test, y_train, y_test, scaler, feature_names = p.preprocess_pipeline(data_file)
+                        # store inference metadata
+                        try:
+                            p.fit_for_inference(X_train)
+                        except Exception:
+                            logger.warning("Could not call fit_for_inference() during repair")
+                        joblib.dump(p, preprocessor_path)
+                        preprocessor = p
+                        logger.info("Preprocessor repaired and saved to disk")
+                        return True
+                    except Exception as e:
+                        logger.error(f"Failed to repair preprocessor from training data: {e}")
+                # if repair failed, fallthrough to try creating a minimal preprocessor below
 
+        # If there's no valid preprocessor on disk, try to fit a new one from training data
         if os.path.exists(data_file):
             logger.info("Fitting new preprocessor from training data")
             p = DataPreprocessor()
-            # This will fit scaler and set feature names
             try:
-                p.preprocess_pipeline(data_file)
+                X_train, X_test, y_train, y_test, scaler, feature_names = p.preprocess_pipeline(data_file)
             except Exception:
                 # preprocess_pipeline may attempt to split etc; fallback to scale_features directly
                 data = p.load_data(data_file)
                 p.handle_missing_values(data)
-                p.scale_features(data)
-            joblib.dump(p, preprocessor_path)
-            preprocessor = p
-            logger.info("New preprocessor fitted and saved")
-            return True
+                X_scaled, y, sc = p.scale_features(data)
+                # if scale_features returned X_scaled as full dataset, use it for inference metadata
+                try:
+                    p.fit_for_inference(X_scaled)
+                except Exception:
+                    logger.warning("Could not call fit_for_inference() after fallback scaling")
+            try:
+                joblib.dump(p, preprocessor_path)
+                preprocessor = p
+                logger.info("New preprocessor fitted and saved")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to save new preprocessor: {e}")
 
     except Exception as e:
         logger.warning(f"Could not ensure preprocessor fitted: {e}")
@@ -562,11 +594,70 @@ def explain_batch():
 @app.route('/api/health')
 def health_check():
     """Health check endpoint."""
+    # Provide extended health including preprocessor status
+    preproc_info = {
+        'present': False,
+        'ready': False,
+        'feature_count': 0,
+        'features_sample': []
+    }
+    try:
+        preproc_path = os.path.join(MODELS_DIR, 'preprocessor.pkl')
+        if preprocessor is not None:
+            preproc_info['present'] = True
+            if getattr(preprocessor, 'feature_names', None):
+                preproc_info['ready'] = True
+                preproc_info['feature_count'] = len(preprocessor.feature_names)
+                preproc_info['features_sample'] = preprocessor.feature_names[:10]
+        elif os.path.exists(preproc_path):
+            # try to load minimal info without replacing global preprocessor
+            tmp = joblib.load(preproc_path)
+            preproc_info['present'] = True
+            if getattr(tmp, 'feature_names', None):
+                preproc_info['ready'] = True
+                preproc_info['feature_count'] = len(tmp.feature_names)
+                preproc_info['features_sample'] = tmp.feature_names[:10]
+    except Exception as e:
+        logger.warning(f"Could not read preprocessor info for health: {e}")
+
     return jsonify({
         'status': 'healthy',
         'models_loaded': len(models),
+        'model_names': list(models.keys()),
+        'preprocessor': preproc_info,
         'timestamp': datetime.now().isoformat()
     })
+
+
+@app.route('/api/preprocessor/repair', methods=['POST'])
+def repair_preprocessor():
+    """Attempt to repair or fit the preprocessor from training CSV and save it."""
+    try:
+        success = ensure_preprocessor_fitted()
+        if success:
+            return jsonify({'status': 'ok', 'message': 'Preprocessor is fitted and ready'})
+        else:
+            return jsonify({'status': 'failed', 'message': 'Could not fit preprocessor from training data'}), 500
+    except Exception as e:
+        logger.error(f"Preprocessor repair error: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/preprocessor/info')
+def preprocessor_info():
+    """Return safe metadata about the fitted preprocessor (feature names and means)."""
+    try:
+        if not ensure_preprocessor_fitted():
+            return jsonify({'error': 'Preprocessor not fitted'}), 404
+        info = {
+            'feature_count': len(preprocessor.feature_names) if getattr(preprocessor, 'feature_names', None) else 0,
+            'feature_names': preprocessor.feature_names if getattr(preprocessor, 'feature_names', None) else [],
+            'feature_means': (preprocessor.feature_means.to_dict() if getattr(preprocessor, 'feature_means', None) is not None else {})
+        }
+        return jsonify(info)
+    except Exception as e:
+        logger.error(f"Error getting preprocessor info: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/train', methods=['POST'])
 def train_model():

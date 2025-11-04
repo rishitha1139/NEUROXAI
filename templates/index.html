@@ -290,6 +290,22 @@
         </div>
 
         <div class="row">
+            <!-- Status Card -->
+            <div class="col-md-12 mb-3">
+                <div class="card">
+                    <div class="card-body d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>System Status:</strong>
+                            <span id="systemStatus" class="ms-2 text-muted">Loading...</span>
+                            <small class="text-muted ms-3" id="modelsLoaded"></small>
+                        </div>
+                        <div>
+                            <button id="repairBtn" class="btn btn-secondary btn-sm">Repair Preprocessor</button>
+                            <a href="/reports" class="btn btn-primary btn-sm ms-2">View Reports</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <!-- Input Form -->
             <div class="col-md-6">
                 <div class="card">
@@ -455,6 +471,10 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <script>
+        // Read CSS variables for use in JS (colors)
+        const rootStyles = getComputedStyle(document.documentElement);
+        const primaryColor = rootStyles.getPropertyValue('--primary-color').trim() || '#2563eb';
+        const accentColor = rootStyles.getPropertyValue('--accent-color').trim() || '#ef4444';
         // Form submission
         document.getElementById('predictionForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -482,12 +502,62 @@
                 });
 
                 const result = await response.json();
+                if (!response.ok || result.error) {
+                    const errMsg = result && result.error ? result.error : 'Prediction failed';
+                    const details = result && result.details ? '\nDetails: ' + result.details : '';
+                    alert(errMsg + details);
+                    return;
+                }
                 displayPrediction(result);
             } catch (error) {
                 console.error('Error:', error);
                 alert('Error making prediction');
             }
         });
+
+        // Load system health on page load
+        async function loadSystemHealth() {
+            try {
+                const res = await fetch('/api/health');
+                const info = await res.json();
+                const statusEl = document.getElementById('systemStatus');
+                const modelsEl = document.getElementById('modelsLoaded');
+                if (info && info.status === 'healthy') {
+                    statusEl.textContent = info.preprocessor && info.preprocessor.ready ? 'Ready (preprocessor OK)' : 'Degraded (preprocessor needs attention)';
+                    modelsEl.textContent = `Models: ${info.model_names ? info.model_names.join(', ') : ''}`;
+                } else {
+                    statusEl.textContent = 'Unavailable';
+                }
+            } catch (e) {
+                console.warn('Could not load system health', e);
+                document.getElementById('systemStatus').textContent = 'Error';
+            }
+        }
+
+        document.getElementById('repairBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('repairBtn');
+            btn.disabled = true;
+            btn.textContent = 'Repairing...';
+            try {
+                const res = await fetch('/api/preprocessor/repair', { method: 'POST' });
+                const result = await res.json();
+                if (res.ok) {
+                    alert('Preprocessor repaired: ' + result.message);
+                } else {
+                    alert('Repair failed: ' + (result.message || result.error || res.statusText));
+                }
+            } catch (e) {
+                console.error('Repair error', e);
+                alert('Error contacting server to repair preprocessor');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Repair Preprocessor';
+                loadSystemHealth();
+            }
+        });
+
+        // run initial health check
+        loadSystemHealth();
 
         // File upload
         document.getElementById('uploadForm').addEventListener('submit', async (e) => {
@@ -502,7 +572,14 @@
                 });
 
                 const result = await response.json();
-                alert(`File uploaded successfully!\nRows: ${result.rows}\nColumns: ${result.columns}`);
+                if (!response.ok || result.error) {
+                    const errMsg = result && result.error ? result.error : 'File upload failed';
+                    const details = result && result.details ? '\nDetails: ' + result.details : '';
+                    alert(errMsg + details);
+                    return;
+                }
+                // Redirect to reports page to view generated reports
+                window.location.href = '/reports';
             } catch (error) {
                 console.error('Error:', error);
                 alert('Error uploading file');
@@ -536,6 +613,12 @@
                 });
 
                 const result = await response.json();
+                if (!response.ok || result.error) {
+                    const errMsg = result && result.error ? result.error : 'Explanation failed';
+                    const details = result && result.details ? '\nDetails: ' + result.details : '';
+                    alert(errMsg + details);
+                    return;
+                }
                 displayExplanation(result);
             } catch (error) {
                 console.error('Error:', error);
@@ -602,13 +685,19 @@
             `;
             
             if (result.explanation && result.explanation.feature_importance) {
+                // feature_importance may be list of [feature, value] tuples
+                const fi = result.explanation.feature_importance;
+                const xVals = fi.map(f => Array.isArray(f) ? f[1] : (f.importance ?? 0));
+                const yVals = fi.map(f => Array.isArray(f) ? f[0] : (f.feature ?? ''));
+                const colors = xVals.map(v => v >= 0 ? primaryColor : accentColor);
+
                 const data = [{
                     type: 'bar',
-                    x: result.explanation.feature_importance.map(f => f[1]),
-                    y: result.explanation.feature_importance.map(f => f[0]),
+                    x: xVals,
+                    y: yVals,
                     orientation: 'h',
                     marker: {
-                        color: result.explanation.feature_importance.map(f => f[1] >= 0 ? var(--primary-color) : var(--accent-color)),
+                        color: colors,
                         opacity: 0.8
                     }
                 }];
