@@ -444,6 +444,36 @@
                 </div>
             </div>
 
+            <!-- Missing features modal -->
+            <div class="modal fade" id="missingModal" tabindex="-1" aria-labelledby="missingModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="missingModalLabel">Missing Features Detected</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <p class="text-muted">The system detected missing features required by the model. You can review and accept default values (from training) or cancel to edit the form.</p>
+                            <div class="table-responsive">
+                                <table class="table table-sm" id="missingFeaturesTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Feature</th>
+                                            <th>Default Value</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" id="acceptDefaultsBtn" class="btn btn-primary">Proceed with defaults</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Results -->
             <div class="col-md-6">
                 <div class="card">
@@ -475,32 +505,85 @@
         const rootStyles = getComputedStyle(document.documentElement);
         const primaryColor = rootStyles.getPropertyValue('--primary-color').trim() || '#2563eb';
         const accentColor = rootStyles.getPropertyValue('--accent-color').trim() || '#ef4444';
-        // Form submission
-        document.getElementById('predictionForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            const features = {};
-            formData.forEach((value, key) => {
-                // Handle checkboxes
-                if (document.querySelector(`input[name="${key}"]`)?.type === 'checkbox') {
-                    features[key] = document.querySelector(`input[name="${key}"]`).checked ? 1 : 0;
-                } else {
-                    features[key] = parseFloat(value);
+        // Feature name mapping (form name -> model expected name)
+        const featureMap = {
+            'Age': 'Age',
+            'BMI': 'BMI',
+            'PhysicalActivity': 'Physical Activity',
+            'SystolicBP': 'Blood Pressure (Systolic)',
+            'DiastolicBP': 'Blood Pressure (Diastolic)',
+            'SleepQuality': 'Sleep Quality',
+            'Tremor': 'Tremor',
+            'Rigidity': 'Rigidity',
+            'Bradykinesia': 'Bradykinesia',
+            'PosturalInstability': 'Postural Instability',
+            'FamilyHistoryParkinsons': 'Family History',
+            'Depression': 'Depression',
+            'Hypertension': 'Hypertension'
+        };
+
+        // Helper: map form features to model feature names
+        function mapFeatures(formFeatures) {
+            const mapped = {};
+            for (const [k, v] of Object.entries(formFeatures)) {
+                const mappedName = featureMap[k] || k;
+                mapped[mappedName] = v;
+            }
+            return mapped;
+        }
+
+        // Check missing features compared to preprocessor feature list
+        function findMissingFeatures(mappedFeatures) {
+            if (!preprocessorInfo || !preprocessorInfo.feature_names) return [];
+            const expected = preprocessorInfo.feature_names;
+            const missing = [];
+            expected.forEach(fname => {
+                if (!(fname in mappedFeatures) || mappedFeatures[fname] === undefined || Number.isNaN(mappedFeatures[fname])) {
+                    const defaultVal = (preprocessorInfo.feature_means && preprocessorInfo.feature_means[fname] !== undefined) ? preprocessorInfo.feature_means[fname] : 0;
+                    missing.push({ feature: fname, default: defaultVal });
                 }
             });
+            return missing;
+        }
 
+        // Show modal with missing features and defaults
+        function showMissingModal(missing, onAccept) {
+            const tbody = document.querySelector('#missingFeaturesTable tbody');
+            tbody.innerHTML = '';
+            missing.forEach(m => {
+                const tr = document.createElement('tr');
+                const tdName = document.createElement('td');
+                tdName.textContent = m.feature;
+                const tdVal = document.createElement('td');
+                tdVal.innerHTML = `<input class="form-control form-control-sm" data-feature="${m.feature}" value="${m.default}" />`;
+                tr.appendChild(tdName);
+                tr.appendChild(tdVal);
+                tbody.appendChild(tr);
+            });
+
+            const modal = new bootstrap.Modal(document.getElementById('missingModal'));
+            modal.show();
+
+            document.getElementById('acceptDefaultsBtn').onclick = function () {
+                const inputs = document.querySelectorAll('#missingFeaturesTable tbody input');
+                const defaults = {};
+                inputs.forEach(inp => {
+                    const name = inp.getAttribute('data-feature');
+                    const val = parseFloat(inp.value);
+                    defaults[name] = Number.isNaN(val) ? 0 : val;
+                });
+                modal.hide();
+                onAccept(defaults);
+            };
+        }
+
+        async function doPredict(finalMappedFeatures) {
             try {
                 const response = await fetch('/api/predict', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model: document.getElementById('modelSelect').value,
-                        features: features
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: document.getElementById('modelSelect').value, features: finalMappedFeatures })
                 });
-
                 const result = await response.json();
                 if (!response.ok || result.error) {
                     const errMsg = result && result.error ? result.error : 'Prediction failed';
@@ -513,7 +596,37 @@
                 console.error('Error:', error);
                 alert('Error making prediction');
             }
+        }
+
+        // Form submission with missing-feature modal
+        document.getElementById('predictionForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const features = {};
+            formData.forEach((value, key) => {
+                if (document.querySelector(`input[name="${key}"]`)?.type === 'checkbox') {
+                    features[key] = document.querySelector(`input[name="${key}"]`).checked ? 1 : 0;
+                } else {
+                    features[key] = value === '' ? NaN : parseFloat(value);
+                }
+            });
+
+            const mapped = mapFeatures(features);
+            const missing = findMissingFeatures(mapped);
+            if (missing.length > 0) {
+                showMissingModal(missing, (defaults) => {
+                    // merge defaults into mapped and send
+                    const final = { ...mapped };
+                    Object.assign(final, defaults);
+                    doPredict(final);
+                });
+            } else {
+                await doPredict(mapped);
+            }
         });
+
+        // Global preprocessor info fetched from server
+        let preprocessorInfo = null;
 
         // Load system health on page load
         async function loadSystemHealth() {
@@ -525,6 +638,15 @@
                 if (info && info.status === 'healthy') {
                     statusEl.textContent = info.preprocessor && info.preprocessor.ready ? 'Ready (preprocessor OK)' : 'Degraded (preprocessor needs attention)';
                     modelsEl.textContent = `Models: ${info.model_names ? info.model_names.join(', ') : ''}`;
+                    // also fetch preprocessor info for defaults
+                    try {
+                        const pi = await fetch('/api/preprocessor/info');
+                        if (pi.ok) {
+                            preprocessorInfo = await pi.json();
+                        }
+                    } catch (e) {
+                        console.warn('Could not fetch preprocessor info', e);
+                    }
                 } else {
                     statusEl.textContent = 'Unavailable';
                 }
@@ -543,6 +665,11 @@
                 const result = await res.json();
                 if (res.ok) {
                     alert('Preprocessor repaired: ' + result.message);
+                    // refresh preprocessor info after repair
+                    try {
+                        const pi = await fetch('/api/preprocessor/info');
+                        if (pi.ok) preprocessorInfo = await pi.json();
+                    } catch (e) { console.warn('Could not refresh preprocessor info', e); }
                 } else {
                     alert('Repair failed: ' + (result.message || result.error || res.statusText));
                 }
