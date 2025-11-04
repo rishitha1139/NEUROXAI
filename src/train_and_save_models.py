@@ -1,17 +1,18 @@
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 import xgboost as xgb
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, Dropout, SimpleRNN
+from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, Dropout
 import joblib
 import os
 import sys
+
+# Use the project's DataPreprocessor to ensure inference alignment
+from src.preprocessing import DataPreprocessor
 
 def load_data():
     print("Loading dataset from data/parkinsons_disease_data.csv...")
@@ -115,8 +116,17 @@ def main():
         os.makedirs("models", exist_ok=True)
         print("Models directory ready\n")
 
-        # Load and split data
-        X_train, X_test, y_train, y_test = load_data()
+        # Use the DataPreprocessor pipeline to load, preprocess and split data
+        preprocessor = DataPreprocessor()
+        X_train, X_test, y_train, y_test, scaler, feature_names = preprocessor.preprocess_pipeline("data/parkinsons_disease_data.csv")
+
+        # Save inference-alignment info into the preprocessor and persist it
+        try:
+            preprocessor.fit_for_inference(X_train)
+            joblib.dump(preprocessor, "models/preprocessor.pkl")
+            print("Saved fitted preprocessor with inference alignment info to models/preprocessor.pkl")
+        except Exception as e:
+            print(f"Warning: could not call fit_for_inference: {e}")
 
         # Train and save traditional ML models
         print("\n=== Training Traditional ML Models ===")

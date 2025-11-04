@@ -74,32 +74,78 @@ def load_models():
                 raise FileNotFoundError(f"Training data not found at {data_file}")
         
         # Load feature selector
-        if os.path.exists(os.path.join(MODELS_DIR, 'feature_selector.pkl')):
-            feature_selector = joblib.load(os.path.join(MODELS_DIR, 'feature_selector.pkl'))
+        feature_selector_path = os.path.join(MODELS_DIR, 'feature_selector.pkl')
+        if os.path.exists(feature_selector_path):
+            feature_selector = joblib.load(feature_selector_path)
             logger.info("Feature selector loaded successfully")
-        
-        # Load ML models
+
+        # Load ML models (support both .joblib and legacy .pkl extensions)
         ml_models = ['random_forest', 'xgboost', 'svm', 'logistic']
         for model_name in ml_models:
-            model_path = os.path.join(MODELS_DIR, f'{model_name}_model.joblib')
-            if os.path.exists(model_path):
-                models[model_name] = joblib.load(model_path)
-                logger.info(f"Model {model_name} loaded successfully")
+            # Prefer .joblib, fall back to .pkl
+            for ext in ('.joblib', '.pkl'):
+                model_path = os.path.join(MODELS_DIR, f'{model_name}_model{ext}')
+                if os.path.exists(model_path):
+                    try:
+                        models[model_name] = joblib.load(model_path)
+                        logger.info(f"Model {model_name} loaded successfully from {model_path}")
+                        break
+                    except Exception as e:
+                        logger.warning(f"Failed to load {model_path}: {e}")
         
         # Load DNN model if available
-        dnn_path = os.path.join(MODELS_DIR, 'dnn_model.keras')
-        if os.path.exists(dnn_path):
-            try:
-                from tensorflow import keras
-                models['dnn'] = keras.models.load_model(dnn_path)
-                logger.info("DNN model loaded successfully")
-            except Exception as e:
-                logger.warning(f"Could not load DNN model: {e}")
+        # Load DNN model if available (support .keras and .h5 extensions)
+        for dnn_file in ('dnn_model.keras', 'dnn_model.h5', 'dnn_model.kerasmodel'):
+            dnn_path = os.path.join(MODELS_DIR, dnn_file)
+            if os.path.exists(dnn_path):
+                try:
+                    from tensorflow import keras
+                    models['dnn'] = keras.models.load_model(dnn_path)
+                    logger.info(f"DNN model loaded successfully from {dnn_path}")
+                    break
+                except Exception as e:
+                    logger.warning(f"Could not load DNN model {dnn_path}: {e}")
         
         logger.info(f"Loaded {len(models)} models")
         
     except Exception as e:
         logger.error(f"Error loading models: {e}")
+
+
+def ensure_preprocessor_fitted():
+    """Ensure a fitted preprocessor is available globally; try to load or fit from training CSV."""
+    global preprocessor
+    try:
+        preprocessor_path = os.path.join(MODELS_DIR, 'preprocessor.pkl')
+        data_file = os.path.join(DATA_DIR, 'parkinsons_disease_data.csv')
+
+        if preprocessor and getattr(preprocessor, 'scaler', None) is not None and getattr(preprocessor, 'feature_names', None):
+            return True
+
+        if os.path.exists(preprocessor_path):
+            preprocessor = joblib.load(preprocessor_path)  
+            logger.info("Preprocessor reloaded from disk")
+            return True
+
+        if os.path.exists(data_file):
+            logger.info("Fitting new preprocessor from training data")
+            p = DataPreprocessor()
+            # This will fit scaler and set feature names
+            try:
+                p.preprocess_pipeline(data_file)
+            except Exception:
+                # preprocess_pipeline may attempt to split etc; fallback to scale_features directly
+                data = p.load_data(data_file)
+                p.handle_missing_values(data)
+                p.scale_features(data)
+            joblib.dump(p, preprocessor_path)
+            preprocessor = p
+            logger.info("New preprocessor fitted and saved")
+            return True
+
+    except Exception as e:
+        logger.warning(f"Could not ensure preprocessor fitted: {e}")
+    return False
 
 def initialize_explainer():
     """Initialize the model explainer with the best model."""
@@ -165,16 +211,31 @@ def predict():
         
         # Convert features to DataFrame
         feature_df = pd.DataFrame([mapped_features])
-        
-        # Scale features if preprocessor is available
+
+        # Transform features for prediction using fitted preprocessor (use prepare_inference if available)
         if preprocessor:
             try:
-                # Use scale_features directly since we've already fitted it
-                feature_df, _, _ = preprocessor.scale_features(feature_df)
-                logger.info("Features preprocessed successfully")
+                # Ensure preprocessor is fitted/loaded
+                if not ensure_preprocessor_fitted():
+                    raise RuntimeError('Preprocessor not fitted and could not be created')
+
+                # Preferred method: prepare_inference
+                if hasattr(preprocessor, 'prepare_inference'):
+                    feature_df = preprocessor.prepare_inference(feature_df)
+                else:
+                    # Fallback for older preprocessor implementations
+                    feature_df = preprocessor.transform_for_prediction(feature_df)
+
+                logger.info("Features prepared for prediction successfully")
             except Exception as preprocess_error:
-                logger.error(f"Error preprocessing features: {preprocess_error}")
-                return jsonify({'error': 'Error preprocessing features'}), 500
+                # Fallback logging and attempt best-effort transform
+                logger.warning(f"Preprocessor error during prepare_inference: {preprocess_error}")
+                try:
+                    feature_df = preprocessor.transform_for_prediction(feature_df)
+                    logger.info("Fallback transform_for_prediction succeeded")
+                except Exception as e2:
+                    logger.error(f"Error preprocessing features: {e2}")
+                    return jsonify({'error': 'Error preprocessing features', 'details': str(e2)}), 500
             
         # Make prediction
         try:
@@ -242,10 +303,33 @@ def explain_prediction():
         
         # Convert features to DataFrame
         feature_df = pd.DataFrame([features])
-        
+
         # Preprocess features if preprocessor is available
         if preprocessor:
-            feature_df = preprocessor.scale_features(feature_df, target_column=None)[0]
+            try:
+                if not ensure_preprocessor_fitted():
+                    raise RuntimeError('Preprocessor not fitted and could not be created')
+
+                if hasattr(preprocessor, 'prepare_inference'):
+                    feature_df = preprocessor.prepare_inference(feature_df)
+                else:
+                    feature_df = preprocessor.transform_for_prediction(feature_df)
+
+            except Exception as preprocess_error:
+                logger.warning(f"Preprocessor error during explanation prepare: {preprocess_error}")
+                try:
+                    feature_df = preprocessor.transform_for_prediction(feature_df)
+                except Exception as e2:
+                    logger.error(f"Error preprocessing features for explanation: {e2}")
+                    return jsonify({'error': 'Error preprocessing features for explanation', 'details': str(e2)}), 500
+
+        # Ensure explainer has feature names if possible
+        try:
+            if hasattr(preprocessor, 'feature_names') and preprocessor.feature_names:
+                explainer.set_feature_names(preprocessor.feature_names)
+        except Exception:
+            # non-fatal
+            pass
         
         # Generate explanations
         if explanation_type == 'shap':
@@ -257,11 +341,17 @@ def explain_prediction():
         
         if explanation:
             # Convert numpy arrays to lists for JSON serialization
-            if 'shap_values' in explanation:
-                explanation['shap_values'] = explanation['shap_values'].tolist()
-            if 'sample' in explanation:
-                explanation['sample'] = explanation['sample'].to_dict('records')
-            
+            try:
+                if 'shap_values' in explanation and hasattr(explanation['shap_values'], 'tolist'):
+                    explanation['shap_values'] = explanation['shap_values'].tolist()
+            except Exception:
+                pass
+            try:
+                if 'sample' in explanation and hasattr(explanation['sample'], 'to_dict'):
+                    explanation['sample'] = explanation['sample'].to_dict('records')
+            except Exception:
+                pass
+
             return jsonify({
                 'explanation': explanation,
                 'type': explanation_type,
@@ -353,7 +443,18 @@ def process_batch_prediction(filename, model_name, data=None):
     
     # Preprocess features
     if preprocessor:
-        X = preprocessor.transform_for_prediction(X)
+        try:
+            if hasattr(preprocessor, 'prepare_inference'):
+                X = preprocessor.prepare_inference(X)
+            else:
+                X = preprocessor.transform_for_prediction(X)
+        except Exception as e:
+            logger.warning(f"Preprocessor failed for batch input, attempting fallback: {e}")
+            try:
+                X = preprocessor.transform_for_prediction(X)
+            except Exception as e2:
+                logger.error(f"Batch preprocessing failed: {e2}")
+                raise
     
     # Make predictions
     model = models[model_name]
@@ -379,39 +480,7 @@ def batch_predict():
         model_name = data.get('model', 'random_forest')
         
         result = process_batch_prediction(filename, model_name)
-        
-        # Make predictions
-        model = models[model_name]
-        
-        if hasattr(model, 'predict_proba'):
-            y_pred_proba = model.predict_proba(X)
-            y_pred = model.predict(X)
-        else:
-            y_pred = model.predict(X)
-            y_pred_proba = None
-        
-        # Calculate metrics
-        evaluator = ModelEvaluator()
-        metrics = evaluator.calculate_metrics(y_true, y_pred, y_pred_proba)
-        
-        # Create results summary
-        results = {
-            'filename': filename,
-            'model_used': model_name,
-            'n_samples': len(data),
-            'predictions': y_pred.tolist(),
-            'metrics': metrics,
-            'timestamp': datetime.now().isoformat()
-        }
-        
-        # Save results
-        results_file = save_model_results(model_name, results, RESULTS_DIR)
-        
-        return jsonify({
-            'message': 'Batch prediction completed',
-            'results_file': results_file,
-            'metrics': metrics
-        })
+        return jsonify({'message': 'Batch prediction completed', 'result': result})
         
     except Exception as e:
         logger.error(f"Batch prediction error: {e}")
@@ -442,7 +511,19 @@ def explain_batch():
         
         # Preprocess features if preprocessor is available
         if preprocessor:
-            X = preprocessor.scale_features(data, target_column='status')[0]
+            try:
+                X_raw = data.drop(columns=['status']) if 'status' in data.columns else data
+                if hasattr(preprocessor, 'prepare_inference'):
+                    X = preprocessor.prepare_inference(X_raw)
+                else:
+                    X = preprocessor.scale_features(X_raw, target_column=None, fit=False)[0]
+            except Exception as e:
+                logger.warning(f"Preprocessor failed in batch explain flow: {e}")
+                # fallback: try to scale using scale_features (fit=False) or use raw
+                try:
+                    X = preprocessor.scale_features(X_raw, target_column=None, fit=False)[0]
+                except Exception:
+                    X = X_raw
         
         # Generate explanations for selected samples
         explanations = {}
@@ -512,8 +593,8 @@ def train_model():
             # Evaluate model
             metrics = trainer.evaluate_model(model_name, X_test, y_test)
             
-            # Save model
-            model_path = os.path.join(MODELS_DIR, f'{model_name}_model.pkl')
+            # Save model (use .joblib to match loader expectations)
+            model_path = os.path.join(MODELS_DIR, f'{model_name}_model.joblib')
             trainer.save_model(model_name, model_path)
             
             # Save preprocessor
@@ -529,7 +610,8 @@ def train_model():
             metrics = trainer.evaluate_dnn_model(model_name, X_test.values, y_test.values)
             
             # Save model
-            model_path = os.path.join(MODELS_DIR, f'{model_name}_model.h5')
+            # Save DNN model using a consistent filename for loader
+            model_path = os.path.join(MODELS_DIR, 'dnn_model.keras')
             trainer.save_model(model_name, model_path)
             
             # Save preprocessor
@@ -540,9 +622,10 @@ def train_model():
             return jsonify({'error': 'Invalid model type'}), 400
         
         # Reload models
+        # Reload models into the global registry and (re)initialize explainer
         load_models()
         initialize_explainer()
-        
+
         return jsonify({
             'message': f'Model {model_name} trained successfully',
             'model_path': model_path,

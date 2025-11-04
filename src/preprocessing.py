@@ -246,24 +246,40 @@ class DataPreprocessor:
         logger.info("Prediction data transformed successfully.")
         return data_aligned
 
-def main():
-    """Example usage of the DataPreprocessor class."""
-    preprocessor = DataPreprocessor(scaler_type='standard')
-    
-    # Example preprocessing pipeline
-    try:
-        X_train, X_test, y_train, y_test, scaler, feature_names = preprocessor.preprocess_pipeline(
-            file_path='../data/parkinsons_disease_data.csv'
-        )
-        print("Preprocessing completed successfully!")
-        print(f"Training set shape: {X_train.shape}")
-        print(f"Testing set shape: {X_test.shape}")
-        print(f"Number of features: {len(feature_names)}")
-        
-    except FileNotFoundError:
-        print("Dataset file not found. Please ensure the CSV file is in the data/ directory.")
-    except Exception as e:
-        print(f"Error during preprocessing: {e}")
+    def fit_for_inference(self, X_train_scaled: pd.DataFrame):
+        """
+        Save feature order and column means from training stage so inference can align inputs.
+        Call this after preprocessing/training (X_train_scaled is post-scaling DataFrame).
+        """
+        # store the final feature order and means for numeric fill
+        self.feature_names = X_train_scaled.columns.tolist()
+        # store training means for numeric columns (used to fill missing features)
+        self.feature_means = X_train_scaled.mean(numeric_only=True)
+        logger.info("Preprocessor: saved feature_names and feature_means for inference.")
 
-if __name__ == "__main__":
-    main()
+    def prepare_inference(self, X_new: pd.DataFrame):
+        """
+        Align and prepare raw input DataFrame `X_new` for inference using stored
+        `feature_names`, `feature_means`, and the fitted scaler.
+
+        Returns a DataFrame ready for model prediction (scaled if scaler is present).
+        """
+        if self.feature_names is None:
+            raise ValueError("Preprocessor is not fitted. Run preprocess_pipeline() during training first.")
+
+        # ensure all expected columns exist, fill with training means
+        for col in self.feature_names:
+            if col not in X_new.columns:
+                fill_value = float(self.feature_means.get(col, 0.0)) if getattr(self, "feature_means", None) is not None else 0.0
+                X_new[col] = fill_value
+
+        # remove any extra columns not seen during training
+        X_new = X_new[self.feature_names]
+
+        # apply scaler (if exists). Note: scaler expects numeric DataFrame with same columns.
+        if self.scaler is not None:
+            X_scaled = self.scaler.transform(X_new)
+            X_scaled = pd.DataFrame(X_scaled, columns=self.feature_names, index=X_new.index)
+            return X_scaled
+
+        return X_new
