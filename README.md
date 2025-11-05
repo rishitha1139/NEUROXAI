@@ -1,19 +1,3 @@
-# 🧠 NeuroXAI - Parkinson's Disease Prediction using Explainable AI
-
-![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
-![Flask](https://img.shields.io/badge/web-flask-green.svg)
-![TensorFlow](https://img.shields.io/badge/deep--learning-tensorflow-orange.svg)
-![Bootstrap](https://img.shields.io/badge/UI-Bootstrap%205.1.3-purple.svg)
-![XAI](https://img.shields.io/badge/XAI-SHAP%2FLIME-brightgreen.svg)
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-
-A modern web application for Parkinson's disease prediction using machine learning and deep learning models, enhanced with Explainable AI (SHAP, LIME). Features an intuitive Bootstrap UI, comprehensive visualizations, and detailed model explanations through an interactive web interface.
-
----
-
-## Key additions in this README
-- How to ensure model/preprocessor feature consistency
-- How to regenerate models and reports
 # 🧠 NeuroXAI — Parkinson's Disease Prediction (updated)
 
 ![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
@@ -50,6 +34,8 @@ pip install -r requirements.txt
 If you want a lightweight deployment without heavy ML libs (TensorFlow / XGBoost), see the "Deployment" section below (use `requirements-lite.txt`).
 
 3. Run the app locally
+
+Run with unbuffered output so logs are streamed in real time (recommended):
 
 ```powershell
 python -u app.py
