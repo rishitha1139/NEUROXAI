@@ -1,3 +1,12 @@
+# Lightweight requirements for serverless deployments (Vercel)
+# Excludes heavy packages like tensorflow and xgboost. Keep this file for deployments
+# where full ML libraries are not required or are hosted separately.
+Flask>=2.2.5
+Flask-Cors>=3.0.10
+joblib>=1.2.0
+numpy>=1.24.0
+pandas>=1.5.3
+scikit-learn>=1.2.2
 flask>=2.0.0
 flask-cors>=3.0.0
 pandas>=1.3.0
