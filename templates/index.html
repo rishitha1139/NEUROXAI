@@ -301,6 +301,7 @@
                         </div>
                         <div>
                             <button id="repairBtn" class="btn btn-secondary btn-sm">Repair Preprocessor</button>
+                            <button id="reloadModelsBtn" class="btn btn-outline-primary btn-sm ms-2">Reload Models</button>
                             <a href="/reports" class="btn btn-primary btn-sm ms-2">View Reports</a>
                         </div>
                     </div>
@@ -317,11 +318,7 @@
                             <div class="mb-3">
                                 <label for="modelSelect" class="form-label">Select Model</label>
                                 <select class="form-select" id="modelSelect" required>
-                                    <option value="random_forest">Random Forest</option>
-                                    <option value="xgboost">XGBoost</option>
-                                    <option value="svm">SVM</option>
-                                    <option value="logistic">Logistic Regression</option>
-                                    <option value="dnn">Deep Neural Network</option>
+                                    <!-- options populated dynamically from /api/models -->
                                 </select>
                             </div>
                             
@@ -452,20 +449,35 @@
                             <h5 class="modal-title" id="missingModalLabel">Missing Features Detected</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
-                        <div class="modal-body">
-                            <p class="text-muted">The system detected missing features required by the model. You can review and accept default values (from training) or cancel to edit the form.</p>
-                            <div class="table-responsive">
-                                <table class="table table-sm" id="missingFeaturesTable">
-                                    <thead>
-                                        <tr>
-                                            <th>Feature</th>
-                                            <th>Default Value</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody></tbody>
-                                </table>
-                            </div>
-                        </div>
+                                <div class="modal-body">
+                                    <p class="text-muted">The system detected missing features required by the model. Review and accept basic defaults to run a quick prediction, or accept recommended defaults to include additional features from training. You can edit any value before proceeding.</p>
+
+                                    <h6>Basic (essential) features</h6>
+                                    <div class="table-responsive mb-3">
+                                        <table class="table table-sm" id="missingFeaturesBasicTable">
+                                            <thead>
+                                                <tr>
+                                                    <th>Feature</th>
+                                                    <th>Default Value</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody></tbody>
+                                        </table>
+                                    </div>
+
+                                    <h6>Recommended (additional) features</h6>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm" id="missingFeaturesRecommendedTable">
+                                            <thead>
+                                                <tr>
+                                                    <th>Feature</th>
+                                                    <th>Default Value</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody></tbody>
+                                        </table>
+                                    </div>
+                                </div>
                         <div class="modal-footer">
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                             <button type="button" id="acceptDefaultsBtn" class="btn btn-primary">Proceed with defaults</button>
@@ -546,35 +558,117 @@
             return missing;
         }
 
-        // Show modal with missing features and defaults
+        // Show modal with missing features and defaults (split into Basic and Recommended)
         function showMissingModal(missing, onAccept) {
-            const tbody = document.querySelector('#missingFeaturesTable tbody');
-            tbody.innerHTML = '';
-            missing.forEach(m => {
-                const tr = document.createElement('tr');
-                const tdName = document.createElement('td');
-                tdName.textContent = m.feature;
-                const tdVal = document.createElement('td');
-                tdVal.innerHTML = `<input class="form-control form-control-sm" data-feature="${m.feature}" value="${m.default}" />`;
-                tr.appendChild(tdName);
-                tr.appendChild(tdVal);
-                tbody.appendChild(tr);
-            });
+            // Clear existing tables
+            const basicBody = document.querySelector('#missingFeaturesBasicTable tbody');
+            const recBody = document.querySelector('#missingFeaturesRecommendedTable tbody');
+            basicBody.innerHTML = '';
+            recBody.innerHTML = '';
+
+            // friendly fallbacks for core features
+            const friendly = {
+                'Age': 50,
+                'BMI': 25,
+                'Physical Activity': 3,
+                'DietQuality': 3,
+                'Blood Pressure (Systolic)': 120,
+                'Blood Pressure (Diastolic)': 80,
+                'SystolicBP': 120,
+                'DiastolicBP': 80,
+                'Sleep Quality': 7,
+                'Tremor': 0,
+                'Rigidity': 0,
+                'Bradykinesia': 0,
+                'Postural Instability': 0,
+                'Family History': 0,
+                'Family History Parkinsons': 0,
+                'FamilyHistoryParkinsons': 0,
+                'Hypertension': 0,
+                'Diabetes': 0,
+                'Smoking': 0,
+                'AlcoholConsumption': 0,
+                'TraumaticBrainInjury': 0,
+                'CholesterolTotal': 180,
+                'CholesterolLDL': 100,
+                'CholesterolHDL': 50,
+                'CholesterolTriglycerides': 120,
+                'UPDRS': 20,
+                'MoCA': 26,
+                'FunctionalAssessment': 80,
+                'SpeechProblems': 0,
+                'SleepDisorders': 0,
+                'Constipation': 0,
+                'Stroke': 0,
+                'Diagnosis': 0,
+                'DoctorInCharge': 0,
+                'EducationLevel': 0,
+                'Gender': 0,
+                'Ethnicity': 0,
+            };
+
+            const { basic, recommended } = splitBasicRecommended(missing);
+
+            function addRows(list, tbody) {
+                list.forEach(m => {
+                    const tr = document.createElement('tr');
+                    const tdName = document.createElement('td');
+                    tdName.textContent = m.feature;
+                    const tdVal = document.createElement('td');
+                    // Choose sensible default: friendly override -> preprocessor mean -> fallback 0
+                    let val = (friendly.hasOwnProperty(m.feature) ? friendly[m.feature] : (m.default !== undefined ? m.default : 0));
+                    // If the number is extremely small (training mean showed near-zero small floats), prefer 0 or friendly
+                    if (typeof val === 'number' && Math.abs(val) < 1e-6) {
+                        val = friendly[m.feature] !== undefined ? friendly[m.feature] : 0;
+                    }
+                    tdVal.innerHTML = `<input class="form-control form-control-sm" data-feature="${m.feature}" value="${val}" />`;
+                    tr.appendChild(tdName);
+                    tr.appendChild(tdVal);
+                    tbody.appendChild(tr);
+                });
+            }
+
+            addRows(basic, basicBody);
+            addRows(recommended, recBody);
 
             const modal = new bootstrap.Modal(document.getElementById('missingModal'));
             modal.show();
 
             document.getElementById('acceptDefaultsBtn').onclick = function () {
-                const inputs = document.querySelectorAll('#missingFeaturesTable tbody input');
                 const defaults = {};
-                inputs.forEach(inp => {
+                const basicInputs = document.querySelectorAll('#missingFeaturesBasicTable tbody input');
+                basicInputs.forEach(inp => {
                     const name = inp.getAttribute('data-feature');
                     const val = parseFloat(inp.value);
                     defaults[name] = Number.isNaN(val) ? 0 : val;
                 });
+                const recInputs = document.querySelectorAll('#missingFeaturesRecommendedTable tbody input');
+                recInputs.forEach(inp => {
+                    const name = inp.getAttribute('data-feature');
+                    const val = parseFloat(inp.value);
+                    if (!(name in defaults)) defaults[name] = Number.isNaN(val) ? 0 : val;
+                });
                 modal.hide();
                 onAccept(defaults);
             };
+        }
+
+        // Helper: split missing features into Basic vs Recommended
+        function splitBasicRecommended(missing) {
+            // Define core basic features (minimal set needed for a reasonable quick prediction)
+            const basicSet = new Set([
+                'Age', 'BMI', 'Physical Activity', 'Blood Pressure (Systolic)', 'Blood Pressure (Diastolic)',
+                'Sleep Quality', 'Family History', 'Hypertension', 'Diabetes', 'Bradykinesia', 'Postural Instability'
+            ]);
+
+            // Everything else is considered recommended (additional context)
+            const basic = [];
+            const recommended = [];
+            missing.forEach(m => {
+                if (basicSet.has(m.feature)) basic.push(m);
+                else recommended.push(m);
+            });
+            return { basic, recommended };
         }
 
         async function doPredict(finalMappedFeatures) {
@@ -628,6 +722,35 @@
         // Global preprocessor info fetched from server
         let preprocessorInfo = null;
 
+        // Load available models from server and populate model select
+        async function loadAvailableModels() {
+            try {
+                const res = await fetch('/api/models');
+                if (!res.ok) return;
+                const models = await res.json();
+                const sel = document.getElementById('modelSelect');
+                sel.innerHTML = '';
+                const entries = Object.keys(models);
+                if (entries.length === 0) {
+                    const opt = document.createElement('option');
+                    opt.value = '';
+                    opt.textContent = 'No models available';
+                    sel.appendChild(opt);
+                    sel.disabled = true;
+                    return;
+                }
+                entries.forEach(name => {
+                    const opt = document.createElement('option');
+                    opt.value = name;
+                    // Make label prettier
+                    opt.textContent = name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+                    sel.appendChild(opt);
+                });
+            } catch (e) {
+                console.warn('Could not load models', e);
+            }
+        }
+
         // Load system health on page load
         async function loadSystemHealth() {
             try {
@@ -647,6 +770,8 @@
                     } catch (e) {
                         console.warn('Could not fetch preprocessor info', e);
                     }
+                    // load available models into the select
+                    loadAvailableModels();
                 } else {
                     statusEl.textContent = 'Unavailable';
                 }
@@ -682,6 +807,29 @@
                 loadSystemHealth();
             }
         });
+
+            document.getElementById('reloadModelsBtn').addEventListener('click', async () => {
+                const btn = document.getElementById('reloadModelsBtn');
+                btn.disabled = true;
+                btn.textContent = 'Reloading...';
+                try {
+                    const res = await fetch('/api/models/reload', { method: 'POST' });
+                    const r = await res.json();
+                    if (res.ok) {
+                        alert('Models reloaded: ' + (r.models || []).join(', '));
+                        loadAvailableModels();
+                    } else {
+                        alert('Reload failed: ' + (r.error || res.statusText));
+                    }
+                } catch (e) {
+                    console.error('Reload models error', e);
+                    alert('Error reloading models');
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = 'Reload Models';
+                    loadSystemHealth();
+                }
+            });
 
         // run initial health check
         loadSystemHealth();

@@ -7,9 +7,20 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import shap
-import lime
-import lime.lime_tabular
+try:
+    import shap
+    shap_available = True
+except Exception as _:
+    shap = None
+    shap_available = False
+
+try:
+    import lime
+    import lime.lime_tabular
+    lime_available = True
+except Exception as _:
+    lime = None
+    lime_available = False
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
 import logging
@@ -54,6 +65,10 @@ class ModelExplainer:
         Returns:
             dict: SHAP explanations
         """
+        if not shap_available:
+            logger.error("SHAP is not available in the environment. Install shap to use this feature.")
+            return None
+
         try:
             logger.info("Generating SHAP explanations...")
             
@@ -140,6 +155,10 @@ class ModelExplainer:
         Returns:
             dict: LIME explanation
         """
+        if not lime_available:
+            logger.error("LIME is not available in the environment. Install lime to use this feature.")
+            return None
+
         try:
             logger.info(f"Generating LIME explanation for sample {sample_idx}...")
             

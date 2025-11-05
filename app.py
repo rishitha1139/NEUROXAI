@@ -5,8 +5,7 @@ Provides a web interface for model inference and explanations.
 
 from flask import Flask, render_template, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
-import pandas as pd
-import numpy as np
+# Heavy libraries (pandas, numpy, sklearn, scipy) are imported lazily inside handlers
 import joblib
 import os
 import json
@@ -15,12 +14,8 @@ from datetime import datetime
 import warnings
 warnings.filterwarnings('ignore')
 
-# Import our custom modules
-from src.preprocessing import DataPreprocessor
-from src.feature_selection import FeatureSelector
-from src.model_training import MLModelTrainer, DLModelTrainer
-from src.explainability import ModelExplainer
-from src.utils import DataVisualizer, ModelEvaluator
+# Custom modules are imported lazily inside functions to avoid slow startup
+# (scikit-learn / scipy can be slow to import; defer until needed)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -49,40 +44,13 @@ def load_models():
     global models, preprocessor, feature_selector
     
     try:
-        # Load or initialize preprocessor
+        # Load model files first (no project imports) so server can report available models quickly.
         preprocessor_path = os.path.join(MODELS_DIR, 'preprocessor.pkl')
         data_file = os.path.join(DATA_DIR, 'parkinsons_disease_data.csv')
-        
-        if os.path.exists(preprocessor_path):
-            preprocessor = joblib.load(preprocessor_path)
-            logger.info("Preprocessor loaded successfully from %s", preprocessor_path)
-        else:
-            logger.warning("No preprocessor found at %s. Creating and fitting new preprocessor...", preprocessor_path)
-            if os.path.exists(data_file):
-                # Initialize and fit preprocessor with training data
-                preprocessor = DataPreprocessor()
-                data = pd.read_csv(data_file)
-                # Get features (all columns except 'status' if it exists)
-                features = data.drop(columns=['status']) if 'status' in data.columns else data
-                # Fit the preprocessor with the features
-                preprocessor.scale_features(features)
-                # Save the fitted preprocessor
-                joblib.dump(preprocessor, preprocessor_path)
-                logger.info("New preprocessor fitted and saved to %s", preprocessor_path)
-            else:
-                logger.error(f"Training data not found at {data_file}")
-                raise FileNotFoundError(f"Training data not found at {data_file}")
-        
-        # Load feature selector
-        feature_selector_path = os.path.join(MODELS_DIR, 'feature_selector.pkl')
-        if os.path.exists(feature_selector_path):
-            feature_selector = joblib.load(feature_selector_path)
-            logger.info("Feature selector loaded successfully")
 
         # Load ML models (support both .joblib and legacy .pkl extensions)
         ml_models = ['random_forest', 'xgboost', 'svm', 'logistic']
         for model_name in ml_models:
-            # Prefer .joblib, fall back to .pkl
             for ext in ('.joblib', '.pkl'):
                 model_path = os.path.join(MODELS_DIR, f'{model_name}_model{ext}')
                 if os.path.exists(model_path):
@@ -92,8 +60,7 @@ def load_models():
                         break
                     except Exception as e:
                         logger.warning(f"Failed to load {model_path}: {e}")
-        
-        # Load DNN model if available
+
         # Load DNN model if available (support .keras and .h5 extensions)
         for dnn_file in ('dnn_model.keras', 'dnn_model.h5', 'dnn_model.kerasmodel'):
             dnn_path = os.path.join(MODELS_DIR, dnn_file)
@@ -105,7 +72,26 @@ def load_models():
                     break
                 except Exception as e:
                     logger.warning(f"Could not load DNN model {dnn_path}: {e}")
+
+        # Try to load preprocessor from disk if present, but do NOT attempt to fit at startup
+        if os.path.exists(preprocessor_path):
+            try:
+                preprocessor = joblib.load(preprocessor_path)
+                logger.info("Preprocessor loaded successfully from %s", preprocessor_path)
+            except Exception as e:
+                logger.warning(f"Failed to load preprocessor from disk: {e}")
+        else:
+            logger.warning("No preprocessor found at %s. Skipping automatic fitting at startup.", preprocessor_path)
         
+        # Load feature selector if present
+        feature_selector_path = os.path.join(MODELS_DIR, 'feature_selector.pkl')
+        if os.path.exists(feature_selector_path):
+            try:
+                feature_selector = joblib.load(feature_selector_path)
+                logger.info("Feature selector loaded successfully")
+            except Exception as e:
+                logger.warning(f"Failed to load feature selector: {e}")
+
         logger.info(f"Loaded {len(models)} models")
         
     except Exception as e:
@@ -116,6 +102,11 @@ def ensure_preprocessor_fitted():
     """Ensure a fitted preprocessor is available globally; try to load or fit from training CSV."""
     global preprocessor
     try:
+        # Local import to avoid heavy imports at module load
+        try:
+            from src.preprocessing import DataPreprocessor
+        except Exception:
+            DataPreprocessor = None
         preprocessor_path = os.path.join(MODELS_DIR, 'preprocessor.pkl')
         data_file = os.path.join(DATA_DIR, 'parkinsons_disease_data.csv')
         # If preprocessor is already loaded and looks healthy, return True
@@ -135,6 +126,8 @@ def ensure_preprocessor_fitted():
                 # attempt to repair by refitting from training CSV if available
                 if os.path.exists(data_file):
                     try:
+                        if DataPreprocessor is None:
+                            raise ImportError('DataPreprocessor not importable')
                         p = DataPreprocessor()
                         # run preprocessing pipeline to fit scaler and feature names
                         X_train, X_test, y_train, y_test, scaler, feature_names = p.preprocess_pipeline(data_file)
@@ -154,6 +147,9 @@ def ensure_preprocessor_fitted():
         # If there's no valid preprocessor on disk, try to fit a new one from training data
         if os.path.exists(data_file):
             logger.info("Fitting new preprocessor from training data")
+            if DataPreprocessor is None:
+                logger.error("DataPreprocessor not importable; cannot fit preprocessor")
+                return False
             p = DataPreprocessor()
             try:
                 X_train, X_test, y_train, y_test, scaler, feature_names = p.preprocess_pipeline(data_file)
@@ -186,8 +182,13 @@ def initialize_explainer():
     if models:
         # Use the first available model for explanations
         best_model = list(models.values())[0]
-        explainer = ModelExplainer(best_model)
-        logger.info("Model explainer initialized")
+        try:
+            from src.explainability import ModelExplainer
+            explainer = ModelExplainer(best_model)
+            logger.info("Model explainer initialized")
+        except Exception as e:
+            explainer = None
+            logger.warning(f"Could not initialize ModelExplainer: {e}")
 
 @app.route('/')
 def index():
@@ -205,10 +206,24 @@ def get_models():
         }
     return jsonify(model_info)
 
+
+@app.route('/api/models/reload', methods=['POST'])
+def reload_models():
+    """Trigger reloading of models from disk and return the new list."""
+    try:
+        load_models()
+        return jsonify({'status': 'ok', 'models': list(models.keys())})
+    except Exception as e:
+        logger.error(f"Error reloading models: {e}")
+        return jsonify({'status': 'error', 'error': str(e)}), 500
+
 @app.route('/api/predict', methods=['POST'])
 def predict():
     """Make predictions using the selected model."""
     try:
+        # Local import to reduce startup cost
+        import pandas as pd
+
         data = request.get_json()
         model_name = data.get('model', 'random_forest')
         features = data.get('features', {})
@@ -241,33 +256,64 @@ def predict():
         
         logger.info(f"Mapped features: {mapped_features}")
         
-        # Convert features to DataFrame
-        feature_df = pd.DataFrame([mapped_features])
-
-        # Transform features for prediction using fitted preprocessor (use prepare_inference if available)
-        if preprocessor:
-            try:
-                # Ensure preprocessor is fitted/loaded
+        # Convert features to DataFrame — but align with preprocessor feature names when possible
+        # If preprocessor is present and has feature_names, build a full row using provided values
+        # and fill missing features from stored feature_means. Any unexpected input keys are dropped.
+        try:
+            if preprocessor:
                 if not ensure_preprocessor_fitted():
-                    raise RuntimeError('Preprocessor not fitted and could not be created')
-
-                # Preferred method: prepare_inference
-                if hasattr(preprocessor, 'prepare_inference'):
-                    feature_df = preprocessor.prepare_inference(feature_df)
+                    logger.warning('Preprocessor not fitted; proceeding with provided features only')
+                    feature_df = pd.DataFrame([mapped_features])
                 else:
-                    # Fallback for older preprocessor implementations
-                    feature_df = preprocessor.transform_for_prediction(feature_df)
+                    expected = getattr(preprocessor, 'feature_names', None)
+                    if expected:
+                        # normalize expected to list
+                        expected = list(expected)
+                        extras = [k for k in mapped_features.keys() if k not in expected]
+                        if extras:
+                            logger.warning(f"Dropping unexpected feature keys not seen at training: {extras}")
 
-                logger.info("Features prepared for prediction successfully")
-            except Exception as preprocess_error:
-                # Fallback logging and attempt best-effort transform
-                logger.warning(f"Preprocessor error during prepare_inference: {preprocess_error}")
+                        # prepare a full row with values for every expected feature
+                        means = getattr(preprocessor, 'feature_means', None)
+                        if hasattr(means, 'to_dict'):
+                            try:
+                                means = means.to_dict()
+                            except Exception:
+                                means = None
+
+                        full_row = {}
+                        for fname in expected:
+                            if fname in mapped_features:
+                                full_row[fname] = mapped_features[fname]
+                            else:
+                                # use stored mean if available, otherwise 0.0
+                                if means and fname in means:
+                                    full_row[fname] = float(means[fname])
+                                else:
+                                    full_row[fname] = 0.0
+
+                        feature_df = pd.DataFrame([full_row])
+                    else:
+                        feature_df = pd.DataFrame([mapped_features])
+            else:
+                feature_df = pd.DataFrame([mapped_features])
+
+            # Preferred method: prepare_inference
+            if preprocessor and hasattr(preprocessor, 'prepare_inference'):
                 try:
-                    feature_df = preprocessor.transform_for_prediction(feature_df)
-                    logger.info("Fallback transform_for_prediction succeeded")
-                except Exception as e2:
-                    logger.error(f"Error preprocessing features: {e2}")
-                    return jsonify({'error': 'Error preprocessing features', 'details': str(e2)}), 500
+                    feature_df = preprocessor.prepare_inference(feature_df)
+                    logger.info("Features prepared for prediction successfully")
+                except Exception as preprocess_error:
+                    logger.warning(f"Preprocessor.prepare_inference failed: {preprocess_error}; attempting fallback transform")
+                    try:
+                        feature_df = preprocessor.transform_for_prediction(feature_df)
+                        logger.info("Fallback transform_for_prediction succeeded")
+                    except Exception as e2:
+                        logger.error(f"Error preprocessing features: {e2}")
+                        return jsonify({'error': 'Error preprocessing features', 'details': str(e2)}), 500
+        except Exception as outer_preproc_exc:
+            logger.error(f"Unexpected error aligning features with preprocessor: {outer_preproc_exc}")
+            return jsonify({'error': 'Error preparing features', 'details': str(outer_preproc_exc)}), 500
             
         # Make prediction
         try:
@@ -322,6 +368,7 @@ def results_file(filename):
 def explain_prediction():
     """Generate explanations for a prediction."""
     try:
+        import pandas as pd
         data = request.get_json()
         model_name = data.get('model', 'random_forest')
         features = data.get('features', {})
@@ -333,27 +380,54 @@ def explain_prediction():
         if not explainer:
             return jsonify({'error': 'Model explainer not initialized'}), 400
         
-        # Convert features to DataFrame
-        feature_df = pd.DataFrame([features])
-
-        # Preprocess features if preprocessor is available
-        if preprocessor:
-            try:
+        # Convert features to DataFrame and align with preprocessor if possible
+        try:
+            if preprocessor:
                 if not ensure_preprocessor_fitted():
-                    raise RuntimeError('Preprocessor not fitted and could not be created')
-
-                if hasattr(preprocessor, 'prepare_inference'):
-                    feature_df = preprocessor.prepare_inference(feature_df)
+                    logger.warning('Preprocessor not fitted; proceeding with provided features only for explanation')
+                    feature_df = pd.DataFrame([features])
                 else:
-                    feature_df = preprocessor.transform_for_prediction(feature_df)
+                    expected = getattr(preprocessor, 'feature_names', None)
+                    if expected:
+                        expected = list(expected)
+                        extras = [k for k in features.keys() if k not in expected]
+                        if extras:
+                            logger.warning(f"Dropping unexpected feature keys not seen at training for explanation: {extras}")
+                        means = getattr(preprocessor, 'feature_means', None)
+                        if hasattr(means, 'to_dict'):
+                            try:
+                                means = means.to_dict()
+                            except Exception:
+                                means = None
+                        full_row = {}
+                        for fname in expected:
+                            if fname in features:
+                                full_row[fname] = features[fname]
+                            else:
+                                if means and fname in means:
+                                    full_row[fname] = float(means[fname])
+                                else:
+                                    full_row[fname] = 0.0
+                        feature_df = pd.DataFrame([full_row])
+                    else:
+                        feature_df = pd.DataFrame([features])
+            else:
+                feature_df = pd.DataFrame([features])
 
-            except Exception as preprocess_error:
-                logger.warning(f"Preprocessor error during explanation prepare: {preprocess_error}")
+            # Try to prepare using preprocessor
+            if preprocessor and hasattr(preprocessor, 'prepare_inference'):
                 try:
-                    feature_df = preprocessor.transform_for_prediction(feature_df)
-                except Exception as e2:
-                    logger.error(f"Error preprocessing features for explanation: {e2}")
-                    return jsonify({'error': 'Error preprocessing features for explanation', 'details': str(e2)}), 500
+                    feature_df = preprocessor.prepare_inference(feature_df)
+                except Exception as preprocess_error:
+                    logger.warning(f"Preprocessor.prepare_inference failed for explanation: {preprocess_error}; attempting fallback transform")
+                    try:
+                        feature_df = preprocessor.transform_for_prediction(feature_df)
+                    except Exception as e2:
+                        logger.error(f"Error preprocessing features for explanation: {e2}")
+                        return jsonify({'error': 'Error preprocessing features for explanation', 'details': str(e2)}), 500
+        except Exception as outer_expl_exc:
+            logger.error(f"Unexpected error preparing features for explanation: {outer_expl_exc}")
+            return jsonify({'error': 'Error preparing features for explanation', 'details': str(outer_expl_exc)}), 500
 
         # Ensure explainer has feature names if possible
         try:
@@ -410,6 +484,9 @@ def upload_file():
         if not file.filename.endswith('.csv'):
             return jsonify({'error': 'Only CSV files are supported'}), 400
         
+        # Local import
+        import pandas as pd
+
         # Save uploaded file
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"upload_{timestamp}.csv"
@@ -447,6 +524,8 @@ def process_batch_prediction(filename, model_name, data=None):
     if model_name not in models:
         raise ValueError(f'Model {model_name} not available')
     
+    import pandas as pd
+
     # Load the data if not provided
     if data is None:
         filepath = os.path.join(DATA_DIR, filename)
@@ -522,6 +601,7 @@ def batch_predict():
 def explain_batch():
     """Generate explanations for batch predictions."""
     try:
+        import pandas as pd
         data = request.get_json()
         filename = data.get('filename')
         model_name = data.get('model', 'random_forest')
@@ -663,6 +743,16 @@ def preprocessor_info():
 def train_model():
     """Train a new model (for development/testing purposes)."""
     try:
+        # Local imports to avoid heavy imports at module import time
+        try:
+            from src.preprocessing import DataPreprocessor
+        except Exception:
+            DataPreprocessor = None
+        try:
+            from src.model_training import MLModelTrainer, DLModelTrainer
+        except Exception:
+            MLModelTrainer = None
+            DLModelTrainer = None
         data = request.get_json()
         model_type = data.get('model_type', 'ml')  # 'ml' or 'dl'
         model_name = data.get('model_name', 'random_forest')
@@ -673,11 +763,15 @@ def train_model():
             return jsonify({'error': 'Training data not found'}), 400
         
         # Initialize preprocessor
+        if DataPreprocessor is None:
+            return jsonify({'error': 'Server cannot import DataPreprocessor; ensure dependencies installed'}), 500
         preprocessor = DataPreprocessor()
         X_train, X_test, y_train, y_test, scaler, feature_names = preprocessor.preprocess_pipeline(data_file)
         
         if model_type == 'ml':
             # Train ML model
+            if MLModelTrainer is None:
+                return jsonify({'error': 'MLModelTrainer not available; ensure project modules are importable'}), 500
             trainer = MLModelTrainer()
             model, training_time = trainer.train_model(model_name, X_train, y_train)
             
@@ -694,6 +788,8 @@ def train_model():
             
         elif model_type == 'dl':
             # Train DNN model
+            if DLModelTrainer is None:
+                return jsonify({'error': 'DLModelTrainer not available; ensure project modules are importable'}), 500
             trainer = DLModelTrainer()
             model = trainer.train_dnn_model(model_name, X_train.values, y_train.values)
             
@@ -773,9 +869,21 @@ def report_status():
     })
 
 if __name__ == '__main__':
-    # Load models on startup
-    load_models()
-    initialize_explainer()
-    
+    # Start model loading in background so the server becomes responsive quickly.
+    # Heavy imports (sklearn, scipy, tensorflow) will happen in the background thread.
+    import threading
+
+    def _background_load():
+        try:
+            load_models()
+            initialize_explainer()
+        except Exception as e:
+            logger.exception("Background model load failed: %s", e)
+
+    loader_thread = threading.Thread(target=_background_load, daemon=True)
+    loader_thread.start()
+
     # Run the application
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Disable the reloader because we already spawn a background loader thread
+    # Bind explicitly to localhost and turn off debug mode to avoid the development reloader
+    app.run(debug=False, host='127.0.0.1', port=5000, use_reloader=False)
