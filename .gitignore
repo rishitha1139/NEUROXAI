@@ -64,3 +64,4 @@ Thumbs.db
 .vercel
 .vercel/*
 vercel.json.bak
+.vercelrc
