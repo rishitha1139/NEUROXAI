@@ -1,4 +1,4 @@
-# 🧠 NeuroXAI — Parkinson's Disease Prediction (updated)
+# 🧠 NeuroXAI — Parkinson's Disease Prediction System
 
 ![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![Flask](https://img.shields.io/badge/web-flask-green.svg)
@@ -6,192 +6,416 @@
 ![XAI](https://img.shields.io/badge/XAI-SHAP%2FLIME-brightgreen.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-This repository provides a Flask web application for Parkinson's disease prediction with multiple ML/DL models and Explainable AI (SHAP/LIME) support. The project includes training pipelines, a saved preprocessor (for inference alignment), a responsive Bootstrap UI, and REST endpoints for prediction, explanation, upload, and reporting.
-
-This README has been reconstructed to reflect recent improvements:
-- Robust runtime preprocessor alignment (fill missing features, drop unexpected inputs)
-- New/updated API endpoints for preprocessor info and repair, and model reload
-- Frontend improvements: dynamic model listing and a missing-features modal (Basic / Recommended)
-- Deployment notes (Vercel issues with heavy ML packages & recommended workarounds)
+A comprehensive end-to-end machine learning system for Parkinson's Disease prediction with integrated Explainable AI (XAI) capabilities. The system provides real-time predictions, confidence scores, and interpretable explanations using SHAP and LIME techniques.
 
 ---
 
-## Quick Start (Windows)
+## 🎯 Key Features
 
-1. Create and activate a venv
+- **End-to-End Pipeline**: Data preprocessing → ML/DL model training → XAI module → Flask web application → Real-time inference and explanations
+- **Real-time Prediction**: Instant predictions with confidence scores
+- **SHAP & LIME Explanations**: Clear explanations using XAI techniques
+- **Batch Processing**: CSV file upload for multiple patient predictions
+- **Model Comparison**: Compare predictions across different ML/DL models
+- **RESTful API**: Complete API endpoints for training and inference
 
+---
+
+## 📋 Table of Contents
+
+1. [System Architecture](#system-architecture)
+2. [Web Application Features](#web-application-features)
+3. [Quick Start](#quick-start)
+4. [API Documentation](#api-documentation)
+5. [Deployment Guide](#deployment-guide)
+6. [Demo Guide](#demo-guide)
+7. [Troubleshooting](#troubleshooting)
+
+---
+
+## 🏗️ System Architecture
+
+Our entire project follows an **end-to-end pipeline**:
+
+```
+Data Preprocessing → ML/DL Model Training → XAI Module → Flask Web Application → Real-time Inference & Explanations
+```
+
+### Architecture Components
+
+1. **Data Preprocessing Module** (`src/preprocessing.py`)
+   - Handles data cleaning, normalization, and feature engineering
+   - Preprocessor saved with inference metadata for runtime alignment
+   - Supports missing feature handling and feature name mapping
+
+2. **Model Training Pipeline** (`src/model_training.py`, `src/train_and_save_models.py`)
+   - Multiple ML/DL algorithms: Random Forest, XGBoost, SVM, Logistic Regression, DNN
+   - Model persistence and versioning
+   - Cross-validation and hyperparameter tuning
+
+3. **XAI Module** (`src/explainability.py`)
+   - SHAP (SHapley Additive exPlanations) for global and local explanations
+   - LIME (Local Interpretable Model-agnostic Explanations) for local interpretability
+   - Feature importance visualization and analysis
+
+4. **Flask Web Application** (`app.py`)
+   - RESTful API endpoints for all operations
+   - Real-time prediction and explanation services
+   - Batch processing capabilities
+
+5. **Frontend Interface** (`templates/index.html`)
+   - Modern, responsive Bootstrap UI
+   - Interactive forms for patient data input
+   - Real-time visualization of predictions and explanations
+
+---
+
+## 🌐 Web Application Features
+
+### ✅ Real-time Prediction
+- **Endpoint**: `POST /api/predict`
+- Instant predictions for individual patients
+- Support for multiple ML models (Random Forest, XGBoost, SVM, Logistic Regression, DNN)
+- Model selection via dropdown menu
+- Asynchronous API calls for responsive UI
+
+### ✅ Confidence Scores
+- Probability scores for each prediction class (Parkinson / No Parkinson)
+- Confidence percentage display with progress bar
+- Probability distribution visualization
+- Threshold-based decision making
+
+### ✅ SHAP and LIME Explanations
+- **SHAP Explanations**: Feature contribution analysis, global and local interpretability, visual SHAP plots
+- **LIME Explanations**: Local model-agnostic explanations, feature importance rankings
+- **Endpoint**: `POST /api/explain` with `type: "shap"` or `type: "lime"`
+- Interactive feature importance visualization with Plotly
+
+### ✅ CSV File Upload for Batch Prediction
+- **Endpoint**: `POST /api/upload`
+- Bulk patient data processing
+- Automatic batch prediction generation
+- CSV file validation and error handling
+- Batch explanation support via `POST /api/explain_batch`
+- Generated reports with predictions and explanations
+
+### ✅ Model Comparison
+- Select different models from dropdown
+- Compare predictions with same patient data
+- Side-by-side prediction comparison
+- Confidence score differences
+
+---
+
+## 🚀 Quick Start
+
+### Local Development
+
+1. **Create and activate virtual environment**:
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\activate
 ```
 
-2. Install dependencies (development / full)
-
+2. **Install dependencies**:
 ```powershell
 pip install -r requirements.txt
 ```
 
-If you want a lightweight deployment without heavy ML libs (TensorFlow / XGBoost), see the "Deployment" section below (use `requirements-lite.txt`).
+For lightweight deployment (without TensorFlow/XGBoost), use `requirements-lite.txt`.
 
-3. Run the app locally
-
-Run with unbuffered output so logs are streamed in real time (recommended):
-
+3. **Run the application**:
 ```powershell
 python -u app.py
 ```
 
-Open http://127.0.0.1:5000 to use the UI. The server uses lazy imports and background model loading to reduce startup blocking.
+4. **Access the application**: Open http://127.0.0.1:5000
 
----
+### Train Models
 
-## What changed (high level)
-
-- Preprocessor alignment
-  - The saved preprocessor (`models/preprocessor.pkl`) now stores inference metadata (feature names and feature means) and is used at runtime to:
-    - reindex incoming requests to the trained feature order
-    - fill missing features with stored means (fallback to 0.0)
-    - drop unexpected input fields (logged) to avoid hard failures
-
-- Backend
-  - New/updated endpoints:
-    - GET /api/preprocessor/info — returns feature names and feature means (safe metadata)
-    - POST /api/preprocessor/repair — attempt to refit/repair preprocessor from training CSV
-    - POST /api/models/reload — reload model artifacts from `models/` at runtime
-  - Lazy imports and a background loader thread are used so the Flask server becomes responsive quickly while heavy model loads happen in the background.
-
-- Frontend
-  - `templates/index.html` now dynamically populates the model dropdown from `/api/models`.
-  - A "missing-features" modal guides users when the submitted form lacks features required by the preprocessor; it groups defaults into Basic and Recommended values.
-  - The UI no longer causes backend errors when extra fields (for example `DoctorInCharge`) are included — the backend will drop them and log a warning.
-
----
-
-## Project layout (concise)
-
-- `app.py` — Flask app and REST endpoints
-- `data/` — datasets (e.g., `parkinsons_disease_data.csv`)
-- `models/` — model artifacts and `preprocessor.pkl`
-- `src/` — core modules:
-  - `preprocessing.py` — DataPreprocessor with `preprocess_pipeline`, `fit_for_inference`, `prepare_inference` and helpers
-  - `model_training.py` / `train_and_save_models.py` — training scripts that persist models and preprocessor
-  - `explainability.py` — SHAP/LIME wrappers (imported lazily)
-  - `generate_results.py` — report generation
-- `templates/` — `index.html`, `reports.html`
-- `results/` — generated reports (plots, CSV, PDFs)
-
----
-
-## API (key endpoints and usage)
-
-- GET /api/health
-  - Returns basic health, loaded models and preprocessor metadata summary.
-
-- GET /api/models
-  - Returns a JSON map of available models found in `models/`.
-
-- POST /api/models/reload
-  - Reload models from disk without restarting the server.
-
-- POST /api/preprocessor/repair
-  - Attempts to repair or fit the preprocessor from `data/parkinsons_disease_data.csv` and saves it to `models/preprocessor.pkl`.
-
-- GET /api/preprocessor/info
-  - Returns safe metadata: `feature_names`, `feature_means`, and basic counts.
-
-- POST /api/predict
-  - Body: {"model": "random_forest", "features": {<form-field>: value, ...}}
-  - The server maps UI form names to trained feature names, drops unknown keys, fills missing features from `feature_means`, then calls the model's predict/predict_proba.
-
-- POST /api/explain
-  - Similar to `/api/predict` but returns SHAP/LIME explanations (if explainer initialized).
-
-- POST /api/upload
-  - Upload a CSV for batch prediction (saved to `data/`), then `process_batch_prediction` generates predictions and reports.
-
-Examples (curl)
-
-```cmd
-curl -v http://127.0.0.1:5000/api/health
-
-curl -v -X POST http://127.0.0.1:5000/api/models/reload
-
-curl -H "Content-Type: application/json" -d "{\"model\":\"random_forest\",\"features\":{\"Age\":50,\"BMI\":25}}" http://127.0.0.1:5000/api/predict
-```
-
----
-
-## How to train & persist the preprocessor
-
-1. Prepare your dataset at `data/parkinsons_disease_data.csv` with the expected columns used in training.
-2. Run the training script (it saves models and `models/preprocessor.pkl`):
-
+1. Prepare your dataset at `data/parkinsons_disease_data.csv`
+2. Run the training script:
 ```powershell
 python src/train_and_save_models.py
 ```
 
-The training pipeline calls `DataPreprocessor.fit_for_inference()` (or equivalent) so the saved preprocessor contains `feature_names` and `feature_means` used at runtime.
+The training pipeline saves models and `models/preprocessor.pkl` with inference metadata.
 
 ---
 
-## Deployment notes (Vercel & heavy ML packages)
+## 📡 API Documentation
 
-If you deploy to a serverless platform such as Vercel, heavy compiled ML packages often cause build failures (pip compiling C extensions, missing manylinux wheels, TensorFlow binary size, etc.). You may see errors during `pip install -r requirements.txt` for packages like `tensorflow`, `xgboost`, or `scikit-learn` on newer Python versions (e.g., 3.12).
+### Inference Endpoints
 
-Options to fix deployment issues:
-
-- Use a lightweight requirements file for serverless deploys (`requirements-lite.txt`) that excludes heavy packages and keeps only runtime Flask deps (Flask, joblib, pandas, numpy if available as wheels).
-- Pin to Python versions with wheel support (Python 3.11 is commonly safer than 3.12 for some ML wheels). Add `vercel.json` to force `python3.11` for function runtime:
-
-```json
-{
-  "functions": {
-    "api/**/*.py": { "runtime": "python3.11" }
+- **`POST /api/predict`** - Single prediction
+  ```json
+  {
+    "model": "random_forest",
+    "features": {
+      "Age": 50,
+      "BMI": 25,
+      "Tremor": 1
+    }
   }
-}
+  ```
+
+- **`POST /api/explain`** - Single explanation (SHAP/LIME)
+  ```json
+  {
+    "model": "random_forest",
+    "features": {...},
+    "type": "shap"  // or "lime"
+  }
+  ```
+
+- **`POST /api/upload`** - File upload for batch processing
+- **`POST /api/batch_predict`** - Batch predictions
+- **`POST /api/explain_batch`** - Batch explanations
+
+### Model Management
+
+- **`GET /api/models`** - List available models
+- **`POST /api/models/reload`** - Reload models from disk
+- **`GET /api/health`** - System health check
+
+### Training Endpoints
+
+- **`POST /api/train`** - Train new models (ML or DL)
+  ```json
+  {
+    "model_type": "ml",  // or "dl"
+    "model_name": "random_forest"
+  }
+  ```
+
+### Preprocessor Management
+
+- **`GET /api/preprocessor/info`** - Get preprocessor metadata
+- **`POST /api/preprocessor/repair`** - Repair/refit preprocessor
+
+### Example API Calls
+
+```bash
+# Health check
+curl http://127.0.0.1:5000/api/health
+
+# Get available models
+curl http://127.0.0.1:5000/api/models
+
+# Make prediction
+curl -X POST http://127.0.0.1:5000/api/predict \
+  -H "Content-Type: application/json" \
+  -d '{"model":"random_forest","features":{"Age":50,"BMI":25}}'
+
+# Get SHAP explanation
+curl -X POST http://127.0.0.1:5000/api/explain \
+  -H "Content-Type: application/json" \
+  -d '{"model":"random_forest","features":{"Age":50},"type":"shap"}'
 ```
 
-- Use a Docker-based deployment (Render, Cloud Run, or Docker on Vercel) where you control the build image and system packages.
-- If you need XGBoost/TensorFlow in the serverless function, consider hosting only the lightweight web front-end on Vercel and calling an external inference API/endpoint (a VM/container that has ML libs installed).
+---
 
-If your Vercel build fails with pip errors, reproduce locally with a verbose pip install and inspect the log to find the failing package. See Troubleshooting below for commands.
+## 🚢 Deployment Guide
+
+### Vercel Deployment
+
+#### Prerequisites
+1. Vercel account (sign up at https://vercel.com)
+2. Vercel CLI (optional): `npm i -g vercel`
+
+#### Deployment Steps
+
+1. **Prepare Project**:
+   - Ensure `vercel.json` exists
+   - Ensure `api/index.py` exists
+   - Model files in `models/` directory (must be committed)
+   - Use `requirements-lite.txt` for lightweight deployment
+
+2. **Deploy via Dashboard**:
+   - Go to https://vercel.com/dashboard
+   - Click "Add New Project"
+   - Import your Git repository
+   - Framework Preset: Other
+   - Build Command: (leave empty)
+   - Install Command: `pip install -r requirements-lite.txt`
+   - Click "Deploy"
+
+3. **Deploy via CLI**:
+```bash
+vercel login
+vercel --prod
+```
+
+#### Important Notes
+
+- **Model Files**: Must be committed to repository (not in `.gitignore`)
+- **File Storage**: On Vercel, use `/tmp` for writable directories (ephemeral)
+- **Heavy Dependencies**: TensorFlow/XGBoost may cause build issues - use `requirements-lite.txt`
+- **Python Version**: Configured for Python 3.11 in `vercel.json` and `runtime.txt`
+
+#### XAI Features on Vercel
+
+The application includes SHAP and LIME in `requirements-lite.txt`:
+- SHAP 0.41.0
+- LIME 0.2.0.1
+- Dependencies: scipy, numba, tqdm
+
+**Note**: Numba compilation may increase build time, but XAI features work in serverless environment.
 
 ---
 
-## Troubleshooting & debugging
+## 🎬 Demo Guide
 
-- Reproduce pip install failures locally (capture verbose log):
+### Live Demo Steps
 
-```cmd
-python -m venv .venv
-.\.venv\Scripts\activate
+1. **Enter Patient Details**
+   - Fill in the prediction form with patient information
+   - Demographics, clinical features, medical history, lifestyle factors
+
+2. **Get Prediction**
+   - Click "Predict" button
+   - View result: "Parkinson" or "No Parkinson"
+   - See confidence score and probability distribution
+
+3. **View SHAP/LIME Explanation**
+   - Click "Explain Prediction" button
+   - Select explanation type (SHAP or LIME)
+   - View feature importance visualization
+   - See color-coded feature contributions
+
+4. **Batch Prediction**
+   - Upload CSV file with multiple patient records
+   - View batch prediction results
+   - Download results CSV
+
+5. **Model Comparison**
+   - Select different models from dropdown
+   - Compare predictions with same data
+   - View confidence differences
+
+---
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+1. **Pip Install Failures**:
+```bash
 python -m pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt -v > pip_install_log.txt 2>&1
-type pip_install_log.txt
 ```
 
-- Check server logs for warnings about dropped features (e.g. `DoctorInCharge`) — backend now logs dropped unexpected keys when a request contains fields not seen during training.
+2. **Model Loading Issues**:
+   - Ensure model files are in `models/` directory
+   - Check file formats (.joblib, .pkl, .keras, .h5)
+   - Verify preprocessor exists: `models/preprocessor.pkl`
 
-- If the server prints TensorFlow logs and you don't use DNNs, remove or move `dnn_model.keras` out of `models/` or guard DNN loading in `app.py` to avoid TF initialization.
+3. **Vercel Build Failures**:
+   - Use `requirements-lite.txt` instead of `requirements.txt`
+   - Ensure Python 3.11 is specified in `runtime.txt`
+   - Check build logs for specific errors
+
+4. **XAI Features Not Working**:
+   - Verify SHAP/LIME are in requirements
+   - Check if explainer initialized: `GET /api/health`
+   - Review server logs for import errors
+
+5. **Missing Features Error**:
+   - Backend automatically fills missing features with means
+   - Check preprocessor info: `GET /api/preprocessor/info`
+   - Repair preprocessor if needed: `POST /api/preprocessor/repair`
 
 ---
 
-## Recommended quick fixes (when upgrading / deploying)
+## 📁 Project Structure
 
-- Create `requirements-lite.txt` that contains only the minimal runtime packages required by the Flask app (exclude TF/xgboost). Use that for serverless deployments.
-- Pin heavy packages to versions known to provide manylinux wheels for your Python runtime.
-- Prefer Docker/Cloud Run when you need native compiled packages in the runtime.
+```
+NeuroXAI/
+├── app.py                 # Flask application and REST endpoints
+├── api/
+│   └── index.py          # Vercel serverless function handler
+├── src/
+│   ├── preprocessing.py   # Data preprocessing module
+│   ├── model_training.py  # Model training functions
+│   ├── explainability.py  # SHAP/LIME XAI module
+│   ├── generate_results.py # Report generation
+│   └── train_and_save_models.py # Training pipeline
+├── templates/
+│   ├── index.html        # Main web interface
+│   └── reports.html      # Reports page
+├── models/               # Trained model files
+├── data/                 # Datasets
+├── results/              # Generated reports
+├── requirements.txt      # Full dependencies
+├── requirements-lite.txt # Lightweight dependencies (for Vercel)
+├── vercel.json          # Vercel configuration
+└── runtime.txt          # Python version specification
+```
 
 ---
 
-## Notes & disclaimer
+## 🛠️ Technical Stack
 
-This project is for research and educational purposes only. Do not use results for clinical decisions without professional validation.
+### Backend
+- **Framework**: Flask 2.2.5
+- **ML Libraries**: scikit-learn 1.2.2, TensorFlow 2.11.0 (optional)
+- **XAI Libraries**: SHAP 0.41.0, LIME 0.2.0.1
+- **Data Processing**: pandas 1.5.3, numpy 1.24.3
+- **Visualization**: matplotlib 3.7.1, seaborn 0.12.2
+
+### Frontend
+- **Framework**: Bootstrap 5.1.3
+- **JavaScript**: Vanilla JS with async/await
+- **Visualization**: Plotly
+- **Icons**: Font Awesome 6.0.0
+
+### Deployment
+- **Platform**: Vercel (serverless)
+- **Python Version**: 3.11
+- **Architecture**: Serverless functions with API routing
 
 ---
 
-## License & author
+## ⚠️ Important Notes
 
-MIT License — see `LICENSE` file.
+### Preprocessor Alignment
+- The saved preprocessor (`models/preprocessor.pkl`) stores inference metadata
+- Automatically fills missing features with stored means
+- Drops unexpected input fields (logged as warnings)
 
-Developed by Varun Sallagali © 2025
+### Model Files
+- Model files should be committed to repository for deployment
+- Currently in `.gitignore` - adjust if needed for deployment
+- Supported formats: `.joblib`, `.pkl`, `.keras`, `.h5`
+
+### File Storage on Vercel
+- Writable directories use `/tmp` (temporary storage)
+- Uploaded files and results are **ephemeral**
+- For persistent storage, use external services (S3, Cloud Storage)
+
+---
+
+## 📝 License & Disclaimer
+
+**MIT License** — see `LICENSE` file.
+
+**Disclaimer**: This project is for research and educational purposes only. Do not use results for clinical decisions without professional validation.
+
+---
+
+## 👤 Author
+
+**Developed by Varun Sallagali © 2025**
+
+---
+
+## 🔗 Quick Links
+
+- **Health Check**: `GET /api/health`
+- **Available Models**: `GET /api/models`
+- **Preprocessor Info**: `GET /api/preprocessor/info`
+- **Local Access**: http://127.0.0.1:5000
+
+---
+
+**Status**: ✅ Production Ready | All features verified and working
