@@ -59,3 +59,8 @@ logs/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Vercel
+.vercel
+.vercel/*
+vercel.json.bak

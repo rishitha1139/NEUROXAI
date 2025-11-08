@@ -21,7 +21,11 @@ warnings.filterwarnings('ignore')
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+# Determine base directory for templates and static files
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates')
+
+app = Flask(__name__, template_folder=TEMPLATES_DIR)
 CORS(app)
 
 # Global variables for loaded models and preprocessors
@@ -31,9 +35,19 @@ feature_selector = None
 explainer = None
 
 # Configuration
-MODELS_DIR = 'models'
-DATA_DIR = 'data'
-RESULTS_DIR = 'results'
+# Detect if running on Vercel (serverless environment)
+IS_VERCEL = os.environ.get('VERCEL') == '1' or os.environ.get('VERCEL_ENV') is not None
+
+if IS_VERCEL:
+    # On Vercel, use /tmp for writable directories and project root for read-only files
+    MODELS_DIR = 'models'  # Models should be in project root (read-only)
+    DATA_DIR = '/tmp/data'  # Use /tmp for uploads
+    RESULTS_DIR = '/tmp/results'  # Use /tmp for generated results
+else:
+    # Local development
+    MODELS_DIR = 'models'
+    DATA_DIR = 'data'
+    RESULTS_DIR = 'results'
 
 # Ensure directories exist
 for directory in [MODELS_DIR, DATA_DIR, RESULTS_DIR]:
@@ -352,17 +366,18 @@ def predict():
 @app.route('/reports')
 def reports():
     """List and display generated reports."""
-    results_dir = os.path.join(os.path.dirname(__file__), 'results')
+    results_dir = RESULTS_DIR
     files = []
-    for f in os.listdir(results_dir):
-        if os.path.isfile(os.path.join(results_dir, f)):
-            files.append(f)
+    if os.path.exists(results_dir):
+        for f in os.listdir(results_dir):
+            if os.path.isfile(os.path.join(results_dir, f)):
+                files.append(f)
     return render_template('reports.html', files=files)
 
 @app.route('/results/<path:filename>')
 def results_file(filename):
     """Serve files from results directory."""
-    results_dir = os.path.join(os.path.dirname(__file__), 'results')
+    results_dir = RESULTS_DIR
     return send_from_directory(results_dir, filename)
 @app.route('/api/explain', methods=['POST'])
 def explain_prediction():
@@ -839,7 +854,7 @@ def save_model_results(model_name, results, output_dir):
 @app.route('/api/reports/status')
 def report_status():
     """Get status of generated reports."""
-    results_dir = os.path.join(os.path.dirname(__file__), 'results')
+    results_dir = RESULTS_DIR
     if not os.path.exists(results_dir):
         return jsonify({
             'status': 'missing',
@@ -868,9 +883,10 @@ def report_status():
         'last_generated': max([f['created'] for f in files]) if files else None
     })
 
-if __name__ == '__main__':
-    # Start model loading in background so the server becomes responsive quickly.
-    # Heavy imports (sklearn, scipy, tensorflow) will happen in the background thread.
+# Load models on startup (for both local and Vercel)
+# On Vercel, this will run when the serverless function is first invoked
+if not IS_VERCEL:
+    # Start model loading in background for local development
     import threading
 
     def _background_load():
@@ -882,8 +898,17 @@ if __name__ == '__main__':
 
     loader_thread = threading.Thread(target=_background_load, daemon=True)
     loader_thread.start()
+else:
+    # For Vercel, load models synchronously on first import
+    # This will happen when the serverless function is cold-started
+    try:
+        load_models()
+        initialize_explainer()
+    except Exception as e:
+        logger.warning(f"Model loading failed on startup: {e}")
 
-    # Run the application
+if __name__ == '__main__':
+    # Run the application locally
     # Disable the reloader because we already spawn a background loader thread
     # Bind explicitly to localhost and turn off debug mode to avoid the development reloader
     app.run(debug=False, host='127.0.0.1', port=5000, use_reloader=False)
