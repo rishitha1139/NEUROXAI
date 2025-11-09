@@ -1,20 +1,66 @@
+import os
+import random
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import joblib
-import tensorflow as tf
+try:
+    import tensorflow as tf
+except Exception:
+    tf = None
 from sklearn.metrics import confusion_matrix, classification_report, roc_curve, auc
 import shap
-import os
+
+# Reproducible seeds
+seed = 42
+random.seed(seed)
+np.random.seed(seed)
+try:
+    import tensorflow as tf
+    tf.random.set_seed(seed)
+except Exception:
+    pass
 
 def load_data():
     """Load and prepare the dataset"""
     print("Loading dataset...")
     data = pd.read_csv("data/parkinsons_disease_data.csv")
-    data = data.drop(["PatientID", "DoctorInCharge"], axis=1)
-    X = data.drop(["Diagnosis"], axis=1)
-    y = data["Diagnosis"]
+
+    # Drop metadata columns like during training
+    for c in ["PatientID", "DoctorInCharge"]:
+        if c in data.columns:
+            data = data.drop(columns=[c])
+
+    X_all = data.drop(["Diagnosis"], axis=1)
+    y_all = data["Diagnosis"]
+
+    # If training saved test indices, load and select the same test set
+    test_idx_path = 'models/test_indices.joblib'
+    if os.path.exists(test_idx_path):
+        try:
+            test_idx = joblib.load(test_idx_path)
+            X = X_all.loc[test_idx]
+            y = y_all.loc[test_idx]
+            print(f"Loaded test indices from {test_idx_path}, using {len(test_idx)} samples for evaluation")
+        except Exception as e:
+            print(f"Could not load test indices ({e}), falling back to full dataset")
+            X = X_all
+            y = y_all
+    else:
+        X = X_all
+        y = y_all
+
+    # If a preprocessor exists, use it to align/scale features
+    preprocessor_path = 'models/preprocessor.pkl'
+    if os.path.exists(preprocessor_path):
+        try:
+            preprocessor = joblib.load(preprocessor_path)
+            X = preprocessor.prepare_inference(X.copy())
+            print("Applied saved preprocessor to evaluation dataset")
+        except Exception as e:
+            print(f"Could not apply preprocessor: {e}")
+
     return X, y
 
 def load_models():

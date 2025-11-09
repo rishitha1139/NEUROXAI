@@ -1,15 +1,32 @@
+import os
+import random
+import sys
 import numpy as np
 import pandas as pd
+import joblib
 from sklearn.ensemble import RandomForestClassifier
 import xgboost as xgb
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, Dropout
-import joblib
-import os
-import sys
+
+# Deterministic / reproducible configuration - set BEFORE importing TensorFlow
+os.environ.setdefault('PYTHONHASHSEED', '0')
+os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
+os.environ.setdefault('TF_DETERMINISTIC_OPS', '1')
+os.environ.setdefault('TF_CUDNN_DETERMINISM', '1')
+
+seed = 42
+random.seed(seed)
+np.random.seed(seed)
+
+try:
+    import tensorflow as tf
+    from tensorflow.keras.models import Sequential
+    from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, Dropout
+    tf.random.set_seed(seed)
+except Exception:
+    # TensorFlow may be optional in some environments; continue without failing
+    tf = None
 
 # Use the project's DataPreprocessor to ensure inference alignment
 from src.preprocessing import DataPreprocessor
@@ -33,15 +50,18 @@ def load_data():
 
 def train_and_save_traditional_models(X_train, X_test, y_train, y_test):
     models = {
-        'random_forest': RandomForestClassifier(random_state=42),
+        'random_forest': RandomForestClassifier(random_state=seed, n_jobs=1),
         'xgboost': xgb.XGBClassifier(
             learning_rate=0.1,
             max_depth=5,
             gamma=0,
-            n_estimators=100
+            n_estimators=100,
+            random_state=seed,
+            n_jobs=1,
+            verbosity=0
         ),
         'svm': SVC(kernel='rbf', probability=True),
-        'logistic': LogisticRegression(random_state=42)
+        'logistic': LogisticRegression(random_state=seed, max_iter=1000)
     }
 
     for name, model in models.items():
@@ -119,6 +139,14 @@ def main():
         # Use the DataPreprocessor pipeline to load, preprocess and split data
         preprocessor = DataPreprocessor()
         X_train, X_test, y_train, y_test, scaler, feature_names = preprocessor.preprocess_pipeline("data/parkinsons_disease_data.csv")
+
+        # Persist test indices so evaluation and plotting reuse the exact same holdout set
+        try:
+            test_idx = X_test.index.to_numpy()
+            joblib.dump(test_idx, "models/test_indices.joblib")
+            print("Saved test indices to models/test_indices.joblib")
+        except Exception as e:
+            print(f"Warning: could not save test indices: {e}")
 
         # Save inference-alignment info into the preprocessor and persist it
         try:

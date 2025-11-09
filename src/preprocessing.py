@@ -93,7 +93,7 @@ class DataPreprocessor:
             
         return data
     
-    def scale_features(self, data, target_column='status', fit=True):
+    def scale_features(self, data, target_column='Diagnosis', fit=True):
         """
         Scale numerical features.
         
@@ -164,7 +164,7 @@ class DataPreprocessor:
         logger.info(f"Data split: Train shape {X_train.shape}, Test shape {X_test.shape}")
         return X_train, X_test, y_train, y_test
     
-    def preprocess_pipeline(self, file_path, target_column='status', test_size=0.2):
+    def preprocess_pipeline(self, file_path, target_column='Diagnosis', test_size=0.2):
         """
         Complete preprocessing pipeline.
         
@@ -178,6 +178,11 @@ class DataPreprocessor:
         """
         # Load data
         data = self.load_data(file_path)
+        # Drop non-feature identifier or metadata columns that should not be used for training
+        for meta_col in ["PatientID", "DoctorInCharge"]:
+            if meta_col in data.columns:
+                data = data.drop(columns=[meta_col])
+                logger.info(f"Dropped metadata column '{meta_col}' from dataset")
         
         # Check data quality
         quality_report = self.check_data_quality(data)
