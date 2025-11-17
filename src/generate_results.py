@@ -5,10 +5,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import joblib
-try:
-    import tensorflow as tf
-except Exception:
-    tf = None
 from sklearn.metrics import confusion_matrix, classification_report, roc_curve, auc
 import shap
 
@@ -16,11 +12,12 @@ import shap
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
+
 try:
     import tensorflow as tf
     tf.random.set_seed(seed)
 except Exception:
-    pass
+    tf = None
 
 def load_data():
     """Load and prepare the dataset"""
@@ -203,15 +200,15 @@ def generate_shap_plots(models, X):
     plt.savefig('results/shap_summary.png')
     plt.close()
 
-def save_plot(plt, filename, results_dir='results'):
+def save_plot(fig, filename, results_dir='results'):
     """Safely save a plot to the results directory."""
     try:
         os.makedirs(results_dir, exist_ok=True)
         filepath = os.path.join(results_dir, filename)
-        plt.savefig(filepath)
-        logger.info(f"Saved plot to {filepath}")
+        fig.savefig(filepath)
+        print(f"Saved plot to {filepath}")
     except Exception as e:
-        logger.error(f"Failed to save plot {filename}: {e}")
+        print(f"Failed to save plot {filename}: {e}")
 def main():
     # Create results directory if it doesn't exist
     os.makedirs('results', exist_ok=True)

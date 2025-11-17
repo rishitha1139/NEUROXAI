@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import joblib
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 import xgboost as xgb
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
@@ -89,6 +90,9 @@ def create_dnn_model(input_shape):
     return model
 
 def train_and_save_deep_learning_models(X_train, X_test, y_train, y_test):
+    if tf is None:
+        print("\nSkipping DNN training: TensorFlow not available")
+        return
     try:
         print("\nPreparing data for deep learning model...")
         # Prepare data for deep learning

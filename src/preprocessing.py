@@ -204,10 +204,6 @@ class DataPreprocessor:
         
         logger.info("Preprocessing pipeline completed successfully")
         return X_train, X_test, y_train, y_test, scaler, self.feature_names
-
-
-        logger.info(f"Data split: Train shape {X_train.shape}, Test shape {X_test.shape}")
-        return X_train, X_test, y_train, y_test
     
     def transform_for_prediction(self, data):
         """

@@ -1,147 +1,155 @@
-# 🧠 NeuroXAI — Parkinson's Disease Prediction System
 
-![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
-![Flask](https://img.shields.io/badge/web-flask-green.svg)
-![Bootstrap](https://img.shields.io/badge/UI-Bootstrap%205.1.3-purple.svg)
-![XAI](https://img.shields.io/badge/XAI-SHAP%2FLIME-brightgreen.svg)
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+# 🧠 NeuroXAI — Parkinson's Disease Prediction (cleaned)
 
-A comprehensive end-to-end machine learning system for Parkinson's Disease prediction with integrated Explainable AI (XAI) capabilities. The system provides real-time predictions, confidence scores, and interpretable explanations using SHAP and LIME techniques.
+Lightweight, reproducible Flask app for Parkinson's disease prediction with XAI (SHAP/LIME) support.
 
----
+This repository contains a complete pipeline: data preprocessing → model training → explainability → web app → result generation.
 
-## 🎯 Key Features
+Quick summary
+- App: `app.py` — Flask server with REST endpoints for prediction, explanation, model management and uploads.
+- Training: `src/train_and_save_models.py` — trains models and writes artifacts to `models/`.
+- Preprocessing: `src/preprocessing.py` — centralized preprocessing and inference alignment (saves `preprocessor.pkl`).
+- Results: `src/generate_results.py` — regenerates evaluation plots using the saved test set and preprocessor.
 
-- **End-to-End Pipeline**: Data preprocessing → ML/DL model training → XAI module → Flask web application → Real-time inference and explanations
-- **Real-time Prediction**: Instant predictions with confidence scores
-- **SHAP & LIME Explanations**: Clear explanations using XAI techniques
-- **Batch Processing**: CSV file upload for multiple patient predictions
-- **Model Comparison**: Compare predictions across different ML/DL models
-- **RESTful API**: Complete API endpoints for training and inference
+If you previously had a separate QUICKSTART.md, this README now contains the single, canonical Quick Start and run instructions.
 
 ---
 
-## 📋 Table of Contents
+## Quick Start (Local development)
 
-1. [System Architecture](#system-architecture)
-2. [Web Application Features](#web-application-features)
-3. [Quick Start](#quick-start)
-4. [API Documentation](#api-documentation)
-5. [Deployment Guide](#deployment-guide)
-6. [Demo Guide](#demo-guide)
-7. [Troubleshooting](#troubleshooting)
+These steps assume you're on Windows (PowerShell or cmd) and have a Python 3.8–3.11 virtual environment.
 
----
+1) Create & activate venv
 
-## 🏗️ System Architecture
-
-Our entire project follows an **end-to-end pipeline**:
-
-```
-Data Preprocessing → ML/DL Model Training → XAI Module → Flask Web Application → Real-time Inference & Explanations
-```
-
-### Architecture Components
-
-1. **Data Preprocessing Module** (`src/preprocessing.py`)
-   - Handles data cleaning, normalization, and feature engineering
-   - Preprocessor saved with inference metadata for runtime alignment
-   - Supports missing feature handling and feature name mapping
-
-2. **Model Training Pipeline** (`src/model_training.py`, `src/train_and_save_models.py`)
-   - Multiple ML/DL algorithms: Random Forest, XGBoost, SVM, Logistic Regression, DNN
-   - Model persistence and versioning
-   - Cross-validation and hyperparameter tuning
-
-3. **XAI Module** (`src/explainability.py`)
-   - SHAP (SHapley Additive exPlanations) for global and local explanations
-   - LIME (Local Interpretable Model-agnostic Explanations) for local interpretability
-   - Feature importance visualization and analysis
-
-4. **Flask Web Application** (`app.py`)
-   - RESTful API endpoints for all operations
-   - Real-time prediction and explanation services
-   - Batch processing capabilities
-
-5. **Frontend Interface** (`templates/index.html`)
-   - Modern, responsive Bootstrap UI
-   - Interactive forms for patient data input
-   - Real-time visualization of predictions and explanations
-
----
-
-## 🌐 Web Application Features
-
-### ✅ Real-time Prediction
-- **Endpoint**: `POST /api/predict`
-- Instant predictions for individual patients
-- Support for multiple ML models (Random Forest, XGBoost, SVM, Logistic Regression, DNN)
-- Model selection via dropdown menu
-- Asynchronous API calls for responsive UI
-
-### ✅ Confidence Scores
-- Probability scores for each prediction class (Parkinson / No Parkinson)
-- Confidence percentage display with progress bar
-- Probability distribution visualization
-- Threshold-based decision making
-
-### ✅ SHAP and LIME Explanations
-- **SHAP Explanations**: Feature contribution analysis, global and local interpretability, visual SHAP plots
-- **LIME Explanations**: Local model-agnostic explanations, feature importance rankings
-- **Endpoint**: `POST /api/explain` with `type: "shap"` or `type: "lime"`
-- Interactive feature importance visualization with Plotly
-
-### ✅ CSV File Upload for Batch Prediction
-- **Endpoint**: `POST /api/upload`
-- Bulk patient data processing
-- Automatic batch prediction generation
-- CSV file validation and error handling
-- Batch explanation support via `POST /api/explain_batch`
-- Generated reports with predictions and explanations
-
-### ✅ Model Comparison
-- Select different models from dropdown
-- Compare predictions with same patient data
-- Side-by-side prediction comparison
-- Confidence score differences
-
----
-
-## 🚀 Quick Start
-
-### Local Development
-
-1. **Create and activate virtual environment**:
+PowerShell
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\activate
+.\.venv\Scripts\Activate.ps1
 ```
 
-2. **Install dependencies**:
+Windows cmd
+```cmd
+python -m venv .venv
+.\.venv\Scripts\activate.bat
+```
+
+2) Install dependencies
+
+Use the full dependencies for development (may include heavy packages like TensorFlow and XGBoost):
 ```powershell
 pip install -r requirements.txt
 ```
 
-For lightweight deployment (without TensorFlow/XGBoost), use `requirements-lite.txt`.
-
-3. **Run the application**:
+For lightweight serverless deploys (no TensorFlow/XGBoost), use:
 ```powershell
-python -u app.py
+pip install -r requirements-lite.txt
 ```
 
-4. **Access the application**: Open http://127.0.0.1:5000
+3) Run the Flask app (development)
 
-### Train Models
-
-1. Prepare your dataset at `data/parkinsons_disease_data.csv`
-2. Run the training script:
+Preferred (avoids import-as-script issues):
 ```powershell
-python src/train_and_save_models.py
+python -m app
+```
+or directly:
+```powershell
+python app.py
 ```
 
-The training pipeline saves models and `models/preprocessor.pkl` with inference metadata.
+Visit: http://127.0.0.1:5000
+
+4) Train models (create artifacts in `models/`)
+
+Run the training pipeline (recommended using module mode so imports resolve):
+```powershell
+python -m src.train_and_save_models
+```
+
+This will:
+- preprocess the dataset at `data/parkinsons_disease_data.csv`
+- save `models/preprocessor.pkl` with feature metadata
+- save model artifacts (`models/*.joblib`, `models/dnn_model.keras`)
+- persist test indices to `models/test_indices.joblib` for reproducible evaluation
+
+5) Reproduce evaluation plots
+
+After training, regenerate plots using the same test set and preprocessor:
+```powershell
+python -m src.generate_results
+```
+Saved plots appear under `results/`.
 
 ---
+
+## Making runs reproducible (recommended)
+
+- Set deterministic seeds at script start (done in the training script). For full reproducibility across systems set these env vars before running:
+```cmd
+set OMP_NUM_THREADS=1
+set MKL_NUM_THREADS=1
+set OPENBLAS_NUM_THREADS=1
+set PYTHONHASHSEED=0
+```
+- Use `python -m` to run package modules (avoids ModuleNotFoundError).
+- The training script saves `models/test_indices.joblib` and `models/preprocessor.pkl` — `generate_results.py` will reuse these to ensure plots match training runs.
+
+---
+
+## API (short)
+
+- `GET /api/health` — health check
+- `GET /api/models` — list available models
+- `POST /api/predict` — single prediction (JSON: `{ "model":"random_forest", "features": {...} }`)
+- `POST /api/explain` — get SHAP/LIME explanation (include `type`)
+- `POST /api/upload` — batch CSV upload
+- `POST /api/models/reload` — reload models from disk
+- `GET /api/preprocessor/info` — preprocessor metadata
+
+---
+
+## Troubleshooting (common)
+
+- Pip install fails: upgrade wheel/setuptools then retry:
+```cmd
+python -m pip install --upgrade pip setuptools wheel
+pip install -r requirements.txt
+```
+- ModuleNotFoundError when running training: run as module from repo root:
+```cmd
+python -m src.train_and_save_models
+```
+- If models fail to load (XGBoost/TensorFlow missing): install the corresponding package or use `requirements-lite.txt` and avoid DL models.
+- If plots change between runs: ensure you re-run training (which saves the test indices) and re-run `src.generate_results.py`; also set the recommended env variables above.
+
+---
+
+## Project structure (key files)
+
+```
+NeuroXAI/
+├── app.py
+├── src/
+│   ├── preprocessing.py
+│   ├── train_and_save_models.py
+│   ├── generate_results.py
+│   └── explainability.py
+├── templates/
+├── models/
+├── data/
+├── results/
+├── requirements.txt
+├── requirements-lite.txt
+└── README.md
+```
+
+---
+
+If you'd like, I can also:
+- remove mentions of QUICKSTART.md from the repo (none found) and ensure the README is the single authoritative run guide,
+- add a short `CONTRIBUTING.md` or `RUNNING.md` with exact commands for CI/deployment,
+- or open a PR with these changes.
+
+If this looks good, I will mark the README update completed and can (optionally) commit a small CONTRIBUTING note and a short test script to validate installs.
 
 ## 📡 API Documentation
 
