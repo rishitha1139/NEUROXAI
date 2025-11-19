@@ -1,5 +1,5 @@
 
-# 🧠 NeuroXAI — Parkinson's Disease Prediction (cleaned)
+# 🧠 NeuroXAI — Parkinson's Disease Prediction 
 
 Lightweight, reproducible Flask app for Parkinson's disease prediction with XAI (SHAP/LIME) support.
 
