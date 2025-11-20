@@ -24,11 +24,12 @@ jupyter_notebook_config.py
 .coverage
 
 # Dataset and model files
-data/
-models/*.keras
-models/*.h5
-models/*.joblib
-models/*.pkl
+# data/
+# models/*.keras
+# models/*.h5
+# models/*.joblib
+# models/*.pkl
+
 
 # Ignore local Jupyter notebooks
 notebooks/
