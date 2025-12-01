@@ -413,7 +413,7 @@ NeuroXAI/
 
 ## 👤 Author
 
-**Developed by Varun Sallagali © 2025**
+**Developed by Challa Sai Rishitha © 2025**
 
 ---
 
